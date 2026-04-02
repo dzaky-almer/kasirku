@@ -1,13 +1,67 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../lib/generated/prisma"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  password     String
+  createdAt    DateTime      @default(now())
+  stores       Store[]
+  subscription Subscription?
+}
+
+model Store {
+  id           String        @id @default(uuid())
+  name         String
+  type         String
+  userId       String
+  createdAt    DateTime      @default(now())
+  user         User          @relation(fields: [userId], references: [id])
+  products     Product[]
+  transactions Transaction[]
+}
+
+model Product {
+  id               String            @id @default(uuid())
+  name             String
+  price            Int
+  stock            Int
+  storeId          String
+  store            Store             @relation(fields: [storeId], references: [id])
+  transactionItems TransactionItem[]
+}
+
+model Transaction {
+  id        String            @id @default(uuid())
+  storeId   String
+  total     Int
+  createdAt DateTime          @default(now())
+  store     Store             @relation(fields: [storeId], references: [id])
+  items     TransactionItem[]
+}
+
+model TransactionItem {
+  id            String      @id @default(uuid())
+  transactionId String
+  productId     String
+  qty           Int
+  price         Int
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  product       Product     @relation(fields: [productId], references: [id])
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  plan      String
+  startDate DateTime
+  expiredAt DateTime
+  status    String
+  user      User     @relation(fields: [userId], references: [id])
 }

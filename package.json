@@ -12,8 +12,11 @@
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
     "bcryptjs": "^3.0.3",
+<<<<<<< HEAD
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
+=======
+>>>>>>> 936b7f6194c71e0bc301cad41692b6e6d10db08a
     "next": "16.2.2",
     "next-auth": "^5.0.0-beta.30",
     "prisma": "^7.6.0",

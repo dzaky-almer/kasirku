@@ -1,17 +1,23 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { checkSubscription, subscriptionExpiredResponse } from "@/app/api/middleware";
 
 // POST - Simpan transaksi baru
 export async function POST(req: Request) {
   const body = await req.json();
-  const { storeId, items } = body;
+  const { storeId, userId, items } = body;
 
-  // Validasi input
-  if (!storeId || !items || items.length === 0) {
+  if (!storeId || !userId || !items || items.length === 0) {
     return NextResponse.json(
-      { error: "storeId dan items wajib diisi" },
+      { error: "storeId, userId, dan items wajib diisi" },
       { status: 400 }
     );
+  }
+
+  // Cek subscription sebelum transaksi
+  const subCheck = await checkSubscription(userId);
+  if (!subCheck.allowed) {
+    return subscriptionExpiredResponse();
   }
 
   // Hitung total

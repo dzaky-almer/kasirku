@@ -138,7 +138,7 @@ export default function ProdukPage() {
 
         <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0">
           <div className="flex-1 relative max-w-xs">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" viewBox="0 0 16 16" fill="none" strokeWidth={1.5}>
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text--400" viewBox="0 0 16 16" fill="none" strokeWidth={1.5}>
               <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
               <path d="M10.5 10.5L14 14" stroke="currentColor" strokeLinecap="round" />
             </svg>
@@ -147,7 +147,7 @@ export default function ProdukPage() {
               placeholder="Cari produk..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-100 rounded-lg outline-none focus:border-amber-300 transition-colors"
+              className="w-full pl-8 pr-3 py-2 text-sm text-black bg-gray-50 border border-gray-100 rounded-lg outline-none focus:border-amber-300 transition-colors"
             />
           </div>
           <div className="flex gap-2">
@@ -248,22 +248,22 @@ export default function ProdukPage() {
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Nama Produk</label>
-                <input type="text" placeholder="Contoh: Kopi Susu Gula Aren" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors" />
+                <input type="text" placeholder="Contoh: Kopi Susu Gula Aren" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Kategori</label>
-                <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors bg-white">
+                <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} className="w-full px-3 py-2 text-sm border text-black border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors bg-white">
                   {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Harga (Rp)</label>
-                  <input type="number" placeholder="27000" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors" />
+                  <input type="number" placeholder="27000" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} className="w-full px-3 py-2 text-sm border text-black border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Stok</label>
-                  <input type="number" placeholder="50" value={form.stock} onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors" />
+                  <input type="number" placeholder="50" value={form.stock} onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))} className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors" />
                 </div>
               </div>
             </div>

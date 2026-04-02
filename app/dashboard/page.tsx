@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+
 const recentTransactions = [
   { item: "Kopi Susu Gula Aren", time: "14:22", qty: 2, amount: 54000 },
   { item: "Americano Hot", time: "13:58", qty: 1, amount: 28000 },
@@ -100,35 +101,7 @@ export default function DashboardPage() {
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-14 bg-white border-r border-gray-100 flex flex-col items-center py-4 gap-1 flex-shrink-0">
-        <div className="w-8 h-8 bg-amber-700 rounded-lg flex items-center justify-center mb-3">
-          <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none">
-            <path d="M4 12c0-3 1.5-5 4-5s4 2 4 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M6 7V5a2 2 0 0 1 4 0v2" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-            <ellipse cx="8" cy="12.5" rx="4" ry="1.5" stroke="white" strokeWidth="1.2" />
-          </svg>
-        </div>
 
-        {navItems.map((nav) => (
-          <button
-            key={nav.label}
-            onClick={() => setActiveNav(nav.label)}
-            title={nav.label}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              activeNav === nav.label
-                ? "bg-amber-50 text-amber-800"
-                : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            {nav.icon}
-          </button>
-        ))}
-
-        <div className="flex-1" />
-        <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-medium text-amber-800">
-          AK
-        </div>
-      </aside>
 
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">

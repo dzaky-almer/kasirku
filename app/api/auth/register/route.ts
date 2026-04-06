@@ -4,16 +4,15 @@ import bcrypt from "bcryptjs";
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { email, password } = body;
+  const { email, password, storeName, storeType } = body; // ← tambah storeName, storeType
 
-  if (!email || !password) {
+  if (!email || !password || !storeName) {
     return NextResponse.json(
-      { error: "email dan password wajib diisi" },
+      { error: "email, password, dan nama toko wajib diisi" },
       { status: 400 }
     );
   }
 
-  // Cek email sudah ada
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     return NextResponse.json(
@@ -22,15 +21,24 @@ export async function POST(req: Request) {
     );
   }
 
-  // Hash password
   const hashedPassword = await bcrypt.hash(password, 10);
 
   const user = await prisma.user.create({
-    data: { email, password: hashedPassword },
+    data: {
+      email,
+      password: hashedPassword,
+      stores: {                          // ← buat store sekaligus
+        create: {
+          name: storeName,
+          type: storeType ?? "cafe",
+        },
+      },
+    },
+    include: { stores: true },
   });
 
   return NextResponse.json(
-    { id: user.id, email: user.email },
+    { id: user.id, email: user.email, storeId: user.stores[0]?.id ?? null },
     { status: 201 }
   );
 }

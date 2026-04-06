@@ -43,14 +43,6 @@ model Product {
   transactionItems TransactionItem[]
 }
 
-model Transaction {
-  id        String            @id @default(uuid())
-  storeId   String
-  total     Int
-  createdAt DateTime          @default(now())
-  store     Store             @relation(fields: [storeId], references: [id])
-  items     TransactionItem[]
-}
 
 model TransactionItem {
   id            String      @id @default(uuid())
@@ -70,4 +62,14 @@ model Subscription {
   expiredAt DateTime
   status    String
   user      User     @relation(fields: [userId], references: [id])
+}
+
+model Transaction {
+  id            String            @id @default(uuid())
+  storeId       String
+  total         Int
+  paymentMethod String            @default("cash")
+  createdAt     DateTime          @default(now())
+  store         Store             @relation(fields: [storeId], references: [id])
+  items         TransactionItem[]
 }

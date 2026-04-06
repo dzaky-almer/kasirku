@@ -10,6 +10,7 @@ interface TxnItem {
   productId: string;
   qty: number;
   price: number;
+  product?: { name: string };
 }
 
 interface Transaction {
@@ -43,7 +44,6 @@ export default function LaporanPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Fetch tiap kali storeId atau tanggal berubah
   useEffect(() => {
     if (status === "loading" || !storeId) return;
     fetchLaporan(date);
@@ -65,17 +65,27 @@ export default function LaporanPage() {
     }
   }
 
-  // Baris flat untuk export (1 baris per item)
   function buildRows() {
-    const rows: { no: number; waktu: string; idTrx: string; productId: string; qty: number; harga: number; subtotal: number }[] = [];
+    const rows: {
+      no: number;
+      waktu: string;
+      idTrx: string;
+      namaProduk: string;
+      qty: number;
+      harga: number;
+      subtotal: number;
+    }[] = [];
     let no = 1;
     for (const trx of transactions) {
       for (const item of trx.items) {
         rows.push({
           no: no++,
-          waktu: new Date(trx.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+          waktu: new Date(trx.createdAt).toLocaleTimeString("id-ID", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
           idTrx: trx.id.slice(0, 8),
-          productId: item.productId.slice(0, 8),
+          namaProduk: item.product?.name ?? "-",
           qty: item.qty,
           harga: item.price,
           subtotal: item.qty * item.price,
@@ -90,9 +100,9 @@ export default function LaporanPage() {
     const ws = utils.json_to_sheet(
       rows.map((r) => ({
         No: r.no,
-        "Waktu": r.waktu,
+        Waktu: r.waktu,
         "ID Transaksi": r.idTrx,
-        "ID Produk": r.productId,
+        "Nama Produk": r.namaProduk,
         Qty: r.qty,
         "Harga Satuan": r.harga,
         Subtotal: r.subtotal,
@@ -109,14 +119,23 @@ export default function LaporanPage() {
     doc.text(`Laporan Penjualan — ${date}`, 14, 15);
     if (summary) {
       doc.setFontSize(10);
-      doc.text(`Total Omzet: ${formatRupiah(summary.totalRevenue)}   Transaksi: ${summary.totalTransactions}   Item: ${summary.totalItems}`, 14, 23);
+      doc.text(
+        `Total Omzet: ${formatRupiah(summary.totalRevenue)}   Transaksi: ${summary.totalTransactions}   Item: ${summary.totalItems}`,
+        14,
+        23
+      );
     }
     const rows = buildRows();
     autoTable(doc, {
-      head: [["No", "Waktu", "ID Trx", "ID Produk", "Qty", "Harga", "Subtotal"]],
+      head: [["No", "Waktu", "ID Trx", "Nama Produk", "Qty", "Harga", "Subtotal"]],
       body: rows.map((r) => [
-        r.no, r.waktu, r.idTrx, r.productId, r.qty,
-        formatRupiah(r.harga), formatRupiah(r.subtotal),
+        r.no,
+        r.waktu,
+        r.idTrx,
+        r.namaProduk,
+        r.qty,
+        formatRupiah(r.harga),
+        formatRupiah(r.subtotal),
       ]),
       startY: summary ? 30 : 22,
       theme: "grid",
@@ -132,7 +151,6 @@ export default function LaporanPage() {
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
 
-        {/* Header */}
         <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">
           <span className="text-sm font-medium text-gray-900">Laporan Penjualan</span>
           <div className="flex items-center gap-2">
@@ -153,7 +171,6 @@ export default function LaporanPage() {
           </div>
         </header>
 
-        {/* Filter tanggal */}
         <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-4 flex-shrink-0">
           <label className="text-xs text-gray-500">Tanggal</label>
           <input
@@ -178,7 +195,6 @@ export default function LaporanPage() {
           )}
         </div>
 
-        {/* Tabel */}
         <div className="flex-1 overflow-y-auto p-5">
           {error && (
             <div className="mb-4 px-4 py-3 bg-red-50 text-red-600 text-sm rounded-xl">
@@ -193,7 +209,7 @@ export default function LaporanPage() {
                   <th className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-5 py-3">NO</th>
                   <th className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-4 py-3">WAKTU</th>
                   <th className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-4 py-3">ID TRANSAKSI</th>
-                  <th className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-4 py-3">ID PRODUK</th>
+                  <th className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-4 py-3">NAMA PRODUK</th>
                   <th className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-4 py-3">QTY</th>
                   <th className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-4 py-3">HARGA</th>
                   <th className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-4 py-3">SUBTOTAL</th>
@@ -218,7 +234,7 @@ export default function LaporanPage() {
                       <td className="px-5 py-3 text-sm text-gray-500">{r.no}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">{r.waktu}</td>
                       <td className="px-4 py-3 text-xs font-mono text-gray-500">{r.idTrx}...</td>
-                      <td className="px-4 py-3 text-xs font-mono text-gray-500">{r.productId}...</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{r.namaProduk}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">{r.qty}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">{formatRupiah(r.harga)}</td>
                       <td className="px-4 py-3 text-sm font-medium text-amber-700">{formatRupiah(r.subtotal)}</td>
@@ -227,7 +243,6 @@ export default function LaporanPage() {
                 )}
               </tbody>
 
-              {/* Footer total */}
               {rows.length > 0 && summary && (
                 <tfoot>
                   <tr className="border-t border-gray-200 bg-gray-50">

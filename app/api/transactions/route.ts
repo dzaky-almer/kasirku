@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { checkSubscription, subscriptionExpiredResponse } from "@/app/api/middleware";
 
-// POST - Simpan transaksi baru
 export async function POST(req: Request) {
   const body = await req.json();
-  const { storeId, userId, items } = body;
+  const { storeId, userId, items, paymentMethod } = body;
 
   if (!storeId || !userId || !items || items.length === 0) {
     return NextResponse.json(
@@ -14,57 +12,50 @@ export async function POST(req: Request) {
     );
   }
 
-  // Cek subscription sebelum transaksi
-  const subCheck = await checkSubscription(userId);
-  if (!subCheck.allowed) {
-    return subscriptionExpiredResponse();
-  }
-
-  // Hitung total
   const total = items.reduce(
     (sum: number, item: { price: number; qty: number }) =>
       sum + item.price * item.qty,
     0
   );
 
-  // Simpan transaksi + items sekaligus
-  const transaction = await prisma.transaction.create({
-    data: {
-      storeId,
-      total,
-      items: {
-        create: items.map((item: {
-          productId: string;
-          qty: number;
-          price: number;
-        }) => ({
-          productId: item.productId,
-          qty: item.qty,
-          price: item.price,
-        })),
-      },
-    },
-    include: {
-      items: true,
-    },
-  });
-
-  // Kurangi stok produk
-  for (const item of items) {
-    await prisma.product.update({
-      where: { id: item.productId },
+  try {
+    const transaction = await prisma.transaction.create({
       data: {
-        stock: {
-          decrement: item.qty,
+        storeId,
+        total,
+        paymentMethod: paymentMethod ?? "cash",
+        items: {
+          create: items.map((item: {
+            productId: string;
+            qty: number;
+            price: number;
+          }) => ({
+            productId: item.productId,
+            qty: item.qty,
+            price: item.price,
+          })),
         },
       },
+      include: { items: true },
     });
-  }
 
-  return NextResponse.json(transaction, { status: 201 });
+    for (const item of items) {
+      await prisma.product.update({
+        where: { id: item.productId },
+        data: { stock: { decrement: item.qty } },
+      });
+    }
+
+    return NextResponse.json(transaction, { status: 201 });
+  } catch (error) {
+    console.error("Transaction error:", error);
+    return NextResponse.json(
+      { error: "Internal server error", detail: String(error) },
+      { status: 500 }
+    );
+  }
 }
 
-// GET - Ambil transaksi by storeId
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const storeId = searchParams.get("storeId");
@@ -84,4 +75,3 @@ export async function GET(req: Request) {
 
   return NextResponse.json(transactions);
 }
-

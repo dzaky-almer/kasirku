@@ -13,8 +13,11 @@ export async function POST(req: Request) {
     );
   }
 
-  // Cek user ada
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { stores: true }, // ← TAMBAHKAN
+  });
+
   if (!user) {
     return NextResponse.json(
       { error: "Email atau password salah" },
@@ -22,7 +25,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Verifikasi password
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) {
     return NextResponse.json(
@@ -34,5 +36,6 @@ export async function POST(req: Request) {
   return NextResponse.json({
     id: user.id,
     email: user.email,
+    storeId: user.stores[0]?.id ?? null, // ← TAMBAHKAN
   });
 }

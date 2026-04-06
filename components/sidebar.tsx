@@ -47,8 +47,14 @@ const navItems = [
   },
 ];
 
+// Halaman yang tidak perlu sidebar
+const hiddenOn = ["/login", "/register"];
+
 export default function Sidebar() {
   const pathname = usePathname();
+
+  // Sembunyikan sidebar di halaman login/register
+  if (hiddenOn.includes(pathname)) return null;
 
   return (
     <aside className="w-14 bg-white border-r border-gray-100 flex flex-col items-center py-4 gap-1 flex-shrink-0">

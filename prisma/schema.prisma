@@ -4,9 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")      // ← TAMBAHKAN
-  directUrl = env("DIRECT_URL")        // ← TAMBAHKAN
+  provider = "postgresql"
 }
 
 model User {
@@ -32,8 +30,15 @@ model Store {
 model Product {
   id               String            @id @default(uuid())
   name             String
+  barcode          String?
+  sku              String?
   price            Int
-  stock            Int
+  costPrice        Int?
+  stock            Int               @default(0)
+  minStock         Int               @default(5)
+  unit             String            @default("pcs")
+  category         String?
+  imageUrl         String?
   storeId          String
   store            Store             @relation(fields: [storeId], references: [id])
   transactionItems TransactionItem[]

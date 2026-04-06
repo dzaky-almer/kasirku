@@ -26,6 +26,7 @@ export default function KasirPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const storeId = (session?.user as any)?.storeId ?? "";
+  const userId = session?.user?.id ?? "";
 
   const [products, setProducts] = useState<Product[]>([]);
   const [activeCategory, setActiveCategory] = useState("Semua");
@@ -85,7 +86,7 @@ export default function KasirPage() {
   const kembalian = paidNum - total;
 
   async function handleBayar() {
-    if (cart.length === 0 || paidNum < total || !storeId) return;
+    if (cart.length === 0 || paidNum < total || !storeId || !userId) return;
     setLoading(true);
     try {
       const res = await fetch("/api/transactions", {
@@ -93,6 +94,7 @@ export default function KasirPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           storeId,
+          userId,
           items: cart.map((item) => ({
             productId: item.id,
             qty: item.qty,
@@ -100,6 +102,13 @@ export default function KasirPage() {
           })),
         }),
       });
+
+      if (res.status === 403) {
+        alert("Langganan kamu sudah habis. Perpanjang untuk melanjutkan.");
+        router.push("/pricing");
+        return;
+      }
+
       if (!res.ok) throw new Error("Gagal menyimpan transaksi");
       setSuccess(true);
     } catch (err) {
@@ -117,7 +126,6 @@ export default function KasirPage() {
           <span className="text-sm font-medium text-gray-900">Kasir</span>
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-400">
-              Kopi Nusantara ·{" "}
               {new Date().toLocaleDateString("id-ID", {
                 weekday: "long",
                 day: "numeric",
@@ -143,11 +151,7 @@ export default function KasirPage() {
               strokeWidth={1.5}
             >
               <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
-              <path
-                d="M10.5 10.5L14 14"
-                stroke="currentColor"
-                strokeLinecap="round"
-              />
+              <path d="M10.5 10.5L14 14" stroke="currentColor" strokeLinecap="round" />
             </svg>
             <input
               type="text"
@@ -242,23 +246,13 @@ export default function KasirPage() {
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-3">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="w-6 h-6 text-gray-300"
-                  fill="none"
-                  strokeWidth={1.5}
-                >
-                  <path
-                    d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"
-                    stroke="currentColor"
-                  />
+                <svg viewBox="0 0 24 24" className="w-6 h-6 text-gray-300" fill="none" strokeWidth={1.5}>
+                  <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke="currentColor" />
                   <path d="M3 6h18M16 10a4 4 0 01-8 0" stroke="currentColor" />
                 </svg>
               </div>
               <p className="text-xs text-gray-400">Belum ada pesanan</p>
-              <p className="text-[10px] text-gray-300 mt-1">
-                Pilih menu di sebelah kiri
-              </p>
+              <p className="text-[10px] text-gray-300 mt-1">Pilih menu di sebelah kiri</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -266,12 +260,8 @@ export default function KasirPage() {
                 <div key={item.id} className="py-3 flex items-center gap-3">
                   <span className="text-lg">🛍️</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-gray-800 truncate">
-                      {item.name}
-                    </p>
-                    <p className="text-[10px] text-gray-400">
-                      {formatRupiah(item.price)}
-                    </p>
+                    <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
+                    <p className="text-[10px] text-gray-400">{formatRupiah(item.price)}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -280,9 +270,7 @@ export default function KasirPage() {
                     >
                       −
                     </button>
-                    <span className="text-xs font-medium text-gray-800 w-4 text-center">
-                      {item.qty}
-                    </span>
+                    <span className="text-xs font-medium text-gray-800 w-4 text-center">{item.qty}</span>
                     <button
                       onClick={() => updateQty(item.id, 1)}
                       className="w-6 h-6 rounded-md bg-amber-100 flex items-center justify-center text-amber-800 hover:bg-amber-200 text-sm font-medium transition-colors"
@@ -317,18 +305,14 @@ export default function KasirPage() {
             </div>
 
             <div className="mb-3">
-              <label className="text-[10px] text-gray-400 mb-1 block">
-                Uang diterima
-              </label>
+              <label className="text-[10px] text-gray-400 mb-1 block">Uang diterima</label>
               <input
                 type="text"
                 placeholder="Rp 0"
                 value={paid}
                 onChange={(e) => {
                   const raw = e.target.value.replace(/\D/g, "");
-                  setPaid(
-                    raw ? "Rp " + parseInt(raw).toLocaleString("id-ID") : ""
-                  );
+                  setPaid(raw ? "Rp " + parseInt(raw).toLocaleString("id-ID") : "");
                 }}
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors"
               />
@@ -365,29 +349,13 @@ export default function KasirPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg
-                viewBox="0 0 24 24"
-                className="w-7 h-7 text-emerald-500"
-                fill="none"
-                strokeWidth={2}
-              >
-                <path
-                  d="M5 13l4 4L19 7"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+              <svg viewBox="0 0 24 24" className="w-7 h-7 text-emerald-500" fill="none" strokeWidth={2}>
+                <path d="M5 13l4 4L19 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <p className="text-base font-medium text-gray-900 mb-1">
-              Pembayaran Berhasil
-            </p>
-            <p className="text-sm text-gray-400 mb-1">
-              Total: {formatRupiah(total)}
-            </p>
-            <p className="text-sm text-emerald-600 mb-6">
-              Kembalian: {formatRupiah(kembalian)}
-            </p>
+            <p className="text-base font-medium text-gray-900 mb-1">Pembayaran Berhasil</p>
+            <p className="text-sm text-gray-400 mb-1">Total: {formatRupiah(total)}</p>
+            <p className="text-sm text-emerald-600 mb-6">Kembalian: {formatRupiah(kembalian)}</p>
             <button
               onClick={clearCart}
               className="w-full py-2.5 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors mb-2"

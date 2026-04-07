@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Script from "next/script";
@@ -11,6 +11,7 @@ interface Product {
   price: number;
   stock: number;
   category?: string;
+  imageUrl?: string;
 }
 
 interface CartItem extends Product {
@@ -138,7 +139,6 @@ export default function KasirPage() {
       return;
     }
 
-    // QRIS via Snap popup
     setQrisLoading(true);
     try {
       const orderId = `TRX-${Date.now()}`;
@@ -262,27 +262,41 @@ export default function KasirPage() {
                       key={product.id}
                       onClick={() => addToCart(product)}
                       disabled={product.stock === 0}
-                      className={`bg-white border rounded-xl p-4 text-left hover:border-amber-300 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+                      className={`bg-white border rounded-xl overflow-hidden text-left hover:border-amber-300 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
                         inCart ? "border-amber-400" : "border-gray-100"
                       }`}
                     >
-                      <div className="text-2xl mb-2">🛍️</div>
-                      <p className="text-xs font-medium text-gray-800 leading-tight mb-1">
-                        {product.name}
-                      </p>
-                      <p className="text-xs text-amber-700 font-medium">
-                        {formatRupiah(product.price)}
-                      </p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">
-                        Stok: {product.stock}
-                      </p>
-                      {inCart && (
-                        <div className="mt-2">
-                          <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">
-                            {inCart.qty} di keranjang
-                          </span>
-                        </div>
-                      )}
+                      {/* Gambar 9:16 */}
+                      <div className="w-full aspect-[9/16] bg-gray-100 flex items-center justify-center overflow-hidden">
+                        {product.imageUrl ? (
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-4xl">🛍️</span>
+                        )}
+                      </div>
+                      {/* Info center */}
+                      <div className="p-3 text-center">
+                        <p className="text-xs font-medium text-gray-800 leading-tight mb-1">
+                          {product.name}
+                        </p>
+                        <p className="text-xs text-amber-700 font-medium">
+                          {formatRupiah(product.price)}
+                        </p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          Stok: {product.stock}
+                        </p>
+                        {inCart && (
+                          <div className="mt-2">
+                            <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">
+                              {inCart.qty} di keranjang
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </button>
                   );
                 })}
@@ -320,7 +334,13 @@ export default function KasirPage() {
               <div className="divide-y divide-gray-50">
                 {cart.map((item) => (
                   <div key={item.id} className="py-3 flex items-center gap-3">
-                    <span className="text-lg">🛍️</span>
+                    <div className="w-8 h-8 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
+                      {item.imageUrl ? (
+                        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-sm">🛍️</span>
+                      )}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
                       <p className="text-[10px] text-gray-400">{formatRupiah(item.price)}</p>

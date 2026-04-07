@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { supabase } from "@/lib/supabase";
 
 interface Product {
   id: string;
@@ -28,6 +29,7 @@ const emptyForm = {
   minStock: "5",
   unit: "pcs",
   category: "",
+  imageUrl: "",
 };
 
 function formatRupiah(amount: number): string {
@@ -48,6 +50,7 @@ export default function ProdukPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!storeId) return;
@@ -86,6 +89,7 @@ export default function ProdukPage() {
       minStock: product.minStock.toString(),
       unit: product.unit,
       category: product.category ?? "",
+      imageUrl: product.imageUrl ?? "",
     });
     setShowModal(true);
   }
@@ -94,6 +98,40 @@ export default function ProdukPage() {
     setShowModal(false);
     setEditTarget(null);
     setForm(emptyForm);
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      showToast("Ukuran gambar maksimal 2MB", "err");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const fileName = `${Date.now()}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from("products")
+        .upload(fileName, file, { upsert: true });
+
+      if (error) throw error;
+
+      const { data } = supabase.storage
+        .from("products")
+        .getPublicUrl(fileName);
+
+      setForm((f) => ({ ...f, imageUrl: data.publicUrl }));
+      showToast("Gambar berhasil diupload");
+    } catch (err) {
+      console.error(err);
+      showToast("Upload gambar gagal", "err");
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function handleSave() {
@@ -110,6 +148,7 @@ export default function ProdukPage() {
       minStock: parseInt(form.minStock) || 5,
       unit: form.unit || "pcs",
       category: form.category.trim() || null,
+      imageUrl: form.imageUrl || null,
       storeId,
     };
 
@@ -222,10 +261,22 @@ export default function ProdukPage() {
                   return (
                     <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3">
-                        <p className="text-sm font-medium text-gray-800">{product.name}</p>
-                        {product.category && (
-                          <p className="text-[10px] text-gray-400">{product.category} · {product.unit}</p>
-                        )}
+                        <div className="flex items-center gap-3">
+                          {/* Gambar produk */}
+                          <div className="w-9 h-9 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center">
+                            {product.imageUrl ? (
+                              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-base">🛍️</span>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">{product.name}</p>
+                            {product.category && (
+                              <p className="text-[10px] text-gray-400">{product.category} · {product.unit}</p>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-400">{product.sku ?? "—"}</td>
                       <td className="px-4 py-3">
@@ -235,18 +286,14 @@ export default function ProdukPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
-                        {margin !== null ? (
-                          <span className="text-emerald-600">{margin}%</span>
-                        ) : "—"}
+                        {margin !== null ? <span className="text-emerald-600">{margin}%</span> : "—"}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">{product.stock} {product.unit}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          product.stock === 0
-                            ? "bg-red-50 text-red-600"
-                            : isLow
-                            ? "bg-orange-50 text-orange-600"
-                            : "bg-emerald-50 text-emerald-700"
+                          product.stock === 0 ? "bg-red-50 text-red-600"
+                          : isLow ? "bg-orange-50 text-orange-600"
+                          : "bg-emerald-50 text-emerald-700"
                         }`}>
                           {product.stock === 0 ? "Habis" : isLow ? "Menipis" : "Aman"}
                         </span>
@@ -331,6 +378,39 @@ export default function ProdukPage() {
               <div>
                 <p className="text-[10px] font-medium text-gray-400 tracking-wider mb-3">OPSIONAL</p>
                 <div className="space-y-3">
+
+                  {/* Upload Gambar */}
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Foto Produk</label>
+                    <div className="flex items-center gap-3">
+                      <div className="w-16 h-16 rounded-xl border border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center flex-shrink-0">
+                        {form.imageUrl ? (
+                          <img src={form.imageUrl} alt="preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <svg viewBox="0 0 24 24" className="w-6 h-6 text-gray-300" fill="none" strokeWidth={1.5}>
+                            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" />
+                            <path d="M3 15l5-5 4 4 3-3 6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <label className="cursor-pointer">
+                          <div className={`px-3 py-2 text-xs border border-dashed border-gray-300 rounded-lg text-center text-gray-500 transition-colors ${uploading ? "opacity-50" : "hover:border-amber-400 hover:text-amber-700"}`}>
+                            {uploading ? "Mengupload..." : form.imageUrl ? "Ganti Gambar" : "Upload Gambar"}
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleImageUpload}
+                            disabled={uploading}
+                          />
+                        </label>
+                        <p className="text-[10px] text-gray-400 mt-1">JPG, PNG, WEBP. Maks 2MB.</p>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">Barcode</label>
@@ -412,7 +492,7 @@ export default function ProdukPage() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={!form.name.trim() || !form.price || !form.stock || loading}
+                disabled={!form.name.trim() || !form.price || !form.stock || loading || uploading}
                 className="flex-1 py-2 text-sm text-white bg-amber-700 rounded-xl hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {loading ? "Menyimpan..." : editTarget ? "Simpan Perubahan" : "Tambah Produk"}

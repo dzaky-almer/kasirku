@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Script from "next/script";
@@ -17,8 +17,6 @@ interface Product {
 interface CartItem extends Product {
   qty: number;
 }
-
-const categories = ["Semua", "Kopi", "Non-Kopi", "Makanan"];
 
 function formatRupiah(amount: number): string {
   return "Rp " + amount.toLocaleString("id-ID");
@@ -37,6 +35,17 @@ export default function KasirPage() {
   const userId = session?.user?.id ?? "";
 
   const [products, setProducts] = useState<Product[]>([]);
+
+  const categories = useMemo(
+    () => [
+      "Semua",
+      ...Array.from(
+        new Set(products.map((p) => p.category).filter(Boolean) as string[])
+      ),
+    ],
+    [products]
+  );
+
   const [activeCategory, setActiveCategory] = useState("Semua");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState("");
@@ -223,7 +232,7 @@ export default function KasirPage() {
                 className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-100 rounded-lg outline-none focus:border-amber-300 transition-colors"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {categories.map((cat) => (
                 <button
                   key={cat}
@@ -254,7 +263,7 @@ export default function KasirPage() {
                 Produk tidak ditemukan.
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-2">
                 {filtered.map((product) => {
                   const inCart = cart.find((c) => c.id === product.id);
                   return (
@@ -266,8 +275,7 @@ export default function KasirPage() {
                         inCart ? "border-amber-400" : "border-gray-100"
                       }`}
                     >
-                      {/* Gambar 9:16 */}
-                      <div className="w-full aspect-[9/16] bg-gray-100 flex items-center justify-center overflow-hidden">
+                      <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
                         {product.imageUrl ? (
                           <img
                             src={product.imageUrl}
@@ -275,23 +283,22 @@ export default function KasirPage() {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <span className="text-4xl">🛍️</span>
+                          <span className="text-2xl">🛍️</span>
                         )}
                       </div>
-                      {/* Info center */}
-                      <div className="p-3 text-center">
-                        <p className="text-xs font-medium text-gray-800 leading-tight mb-1">
+                      <div className="p-2 text-center">
+                        <p className="text-[11px] font-medium text-gray-800 leading-tight mb-0.5 truncate">
                           {product.name}
                         </p>
-                        <p className="text-xs text-amber-700 font-medium">
+                        <p className="text-[11px] text-amber-700 font-medium">
                           {formatRupiah(product.price)}
                         </p>
                         <p className="text-[10px] text-gray-400 mt-0.5">
                           Stok: {product.stock}
                         </p>
                         {inCart && (
-                          <div className="mt-2">
-                            <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">
+                          <div className="mt-1">
+                            <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">
                               {inCart.qty} di keranjang
                             </span>
                           </div>

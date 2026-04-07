@@ -52,6 +52,13 @@ export default function ProdukPage() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  // Kategori
+  const [customCategories, setCustomCategories] = useState<string[]>([
+    "Kopi", "Non-Kopi", "Makanan", "Minuman",
+  ]);
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
+
   useEffect(() => {
     if (!storeId) return;
     fetch(`/api/products?storeId=${storeId}`)
@@ -71,9 +78,22 @@ export default function ProdukPage() {
     setTimeout(() => setToast(null), 2500);
   }
 
+  function saveNewCategory() {
+    const trimmed = newCategory.trim();
+    if (!trimmed) return;
+    if (!customCategories.includes(trimmed)) {
+      setCustomCategories((prev) => [...prev, trimmed]);
+    }
+    setForm((f) => ({ ...f, category: trimmed }));
+    setNewCategory("");
+    setShowAddCategory(false);
+  }
+
   function openAdd() {
     setEditTarget(null);
     setForm(emptyForm);
+    setShowAddCategory(false);
+    setNewCategory("");
     setShowModal(true);
   }
 
@@ -91,6 +111,12 @@ export default function ProdukPage() {
       category: product.category ?? "",
       imageUrl: product.imageUrl ?? "",
     });
+    // Kalau kategori produk belum ada di list, tambahkan
+    if (product.category && !customCategories.includes(product.category)) {
+      setCustomCategories((prev) => [...prev, product.category!]);
+    }
+    setShowAddCategory(false);
+    setNewCategory("");
     setShowModal(true);
   }
 
@@ -98,6 +124,8 @@ export default function ProdukPage() {
     setShowModal(false);
     setEditTarget(null);
     setForm(emptyForm);
+    setShowAddCategory(false);
+    setNewCategory("");
   }
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -262,7 +290,6 @@ export default function ProdukPage() {
                     <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
-                          {/* Gambar produk */}
                           <div className="w-9 h-9 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center">
                             {product.imageUrl ? (
                               <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
@@ -433,6 +460,7 @@ export default function ProdukPage() {
                       />
                     </div>
                   </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">Harga Modal (Rp)</label>
@@ -460,6 +488,7 @@ export default function ProdukPage() {
                       />
                     </div>
                   </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">Satuan</label>
@@ -471,17 +500,51 @@ export default function ProdukPage() {
                         {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
                       </select>
                     </div>
+
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">Kategori</label>
-                      <input
-                        type="text"
-                        placeholder="Minuman, Makanan, dll"
-                        value={form.category}
-                        onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors"
-                      />
+                      <div className="flex gap-1.5">
+                        <select
+                          value={form.category}
+                          onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                          className="flex-1 px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors bg-white"
+                        >
+                          <option value="">-- Pilih --</option>
+                          {customCategories.map((cat) => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCategory((v) => !v)}
+                          className="px-2 py-2 text-xs text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-50 transition-colors whitespace-nowrap"
+                        >
+                          + Baru
+                        </button>
+                      </div>
+                      {showAddCategory && (
+                        <div className="flex gap-1.5 mt-2">
+                          <input
+                            type="text"
+                            placeholder="Nama kategori..."
+                            value={newCategory}
+                            onChange={(e) => setNewCategory(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") saveNewCategory(); }}
+                            className="flex-1 px-3 py-2 text-sm text-black border border-amber-300 rounded-lg outline-none focus:border-amber-400 transition-colors"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={saveNewCategory}
+                            className="px-3 py-2 text-xs bg-amber-700 text-white rounded-lg hover:bg-amber-800 transition-colors"
+                          >
+                            OK
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
+
                 </div>
               </div>
             </div>

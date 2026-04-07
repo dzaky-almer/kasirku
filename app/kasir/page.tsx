@@ -394,7 +394,7 @@ export default function KasirPage() {
 
               {paymentMethod === "cash" && (
                 <div className="mb-3">
-                  <label className="text-[10px] text-gray-400 mb-1 block">Uang diterima</label>
+                  <label className="text-[10px] text-black mb-1 block">Uang diterima</label>
                   <input
                     type="text"
                     placeholder="Rp 0"
@@ -403,7 +403,7 @@ export default function KasirPage() {
                       const raw = e.target.value.replace(/\D/g, "");
                       setPaid(raw ? "Rp " + parseInt(raw).toLocaleString("id-ID") : "");
                     }}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors"
+                    className="w-full px-3 py-2 text-sm border text-black border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors"
                   />
                   {paidNum > 0 && paidNum >= total && (
                     <p className="text-xs text-emerald-600 mt-1">

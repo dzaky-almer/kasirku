@@ -48,23 +48,42 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Tunggu session selesai load
-    if (status === "loading") return;
-    if (!storeId) return;
-
-    const today = new Date().toISOString().split("T")[0];
-
-    // 1. Fetch transaksi hari ini untuk metric cards + recent list
-    fetch(`/api/transactions?storeId=${storeId}`)
+  if (status === "loading") return;
+  if (!storeId) return;
+ 
+  const today = new Date().toISOString().split("T")[0];
+ 
+  // Hitung tanggal 7 hari terakhir
+  const last7Dates = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().split("T")[0]; // "2026-04-01"
+  });
+ 
+  // 1. Fetch transaksi 7 hari terakhir sekaligus
+  // Fetch per hari paralel
+  Promise.all(
+    last7Dates.map((date) =>
+      fetch(`/api/transactions?storeId=${storeId}&date=${date}`)
+        .then((r) => r.json())
+        .then((data: any[]) => {
+          if (!Array.isArray(data)) return 0;
+          return data.reduce((sum, t) => sum + (t.total ?? 0), 0);
+        })
+        .catch(() => 0)
+    )
+  ).then((revenues) => {
+    setSalesData(revenues); // [omzet hari-1, ..., omzet hari ini]
+ 
+    // Hitung metric dari transaksi hari ini (index terakhir)
+    // Fetch ulang transaksi hari ini untuk recent list
+    fetch(`/api/transactions?storeId=${storeId}&date=${today}`)
       .then((r) => r.json())
       .then((data: any[]) => {
         if (!Array.isArray(data)) return;
-
-        // Recent 5 transaksi (format untuk tampilan list)
+ 
         const recent = data.slice(0, 5).map((t) => ({
-          item: t.items?.length > 0
-            ? `${t.items[0].qty}x item` // nama produk tidak ada di transaksi, pakai qty
-            : `Transaksi`,
+          item: t.items?.length > 0 ? `${t.items[0].qty}x item` : `Transaksi`,
           time: new Date(t.createdAt).toLocaleTimeString("id-ID", {
             hour: "2-digit", minute: "2-digit",
           }),
@@ -74,56 +93,49 @@ export default function DashboardPage() {
         setRecentTxns(recent);
       })
       .catch(console.error);
-
-    // 2. Fetch produk untuk stok
-    fetch(`/api/products?storeId=${storeId}`)
-      .then((r) => r.json())
-      .then((data: any[]) => {
-        if (!Array.isArray(data)) return;
-        const stocks = data.map((p) => ({
-          name: p.name,
-          stock: p.stock,
-          unit: "pcs",
-          status: p.stock < 5 ? "warn" : "ok",
-        }));
-        setStockList(stocks);
-      })
-      .catch(console.error);
-
-    // 3. Fetch laporan hari ini untuk omzet + top produk
-    fetch(`/api/reports?storeId=${storeId}&date=${today}`)
-      .then((r) => r.json())
-      .then((data: any) => {
-        // Top products — hitung dari transactions.items
-        if (Array.isArray(data.transactions)) {
-          const productMap: Record<string, { name: string; sold: number; revenue: number }> = {};
-          for (const trx of data.transactions) {
-            for (const item of trx.items ?? []) {
-              const key = item.productId;
-              if (!productMap[key]) {
-                productMap[key] = { name: item.productId, sold: 0, revenue: 0 };
-              }
-              productMap[key].sold += item.qty;
-              productMap[key].revenue += item.qty * item.price;
+  });
+ 
+  // 2. Fetch produk untuk stok
+  fetch(`/api/products?storeId=${storeId}`)
+    .then((r) => r.json())
+    .then((data: any[]) => {
+      if (!Array.isArray(data)) return;
+      const stocks = data.map((p) => ({
+        name: p.name,
+        stock: p.stock,
+        unit: p.unit ?? "pcs",
+        status: p.stock <= (p.minStock ?? 5) ? "warn" : "ok",
+      }));
+      setStockList(stocks);
+    })
+    .catch(console.error);
+ 
+  // 3. Fetch laporan hari ini untuk top produk
+  fetch(`/api/reports?storeId=${storeId}&date=${today}`)
+    .then((r) => r.json())
+    .then((data: any) => {
+      if (Array.isArray(data.transactions)) {
+        const productMap: Record<string, { name: string; sold: number; revenue: number }> = {};
+        for (const trx of data.transactions) {
+          for (const item of trx.items ?? []) {
+            const key = item.productId;
+            if (!productMap[key]) {
+              productMap[key] = { name: item.product?.name ?? item.productId, sold: 0, revenue: 0 };
             }
+            productMap[key].sold += item.qty;
+            productMap[key].revenue += item.qty * item.price;
           }
-          const tops = Object.values(productMap)
-            .sort((a, b) => b.sold - a.sold)
-            .slice(0, 5);
-          setTopProducts(tops);
-
-          // Omzet hari ini sebagai bar terakhir
-          const omzetHariIni = data.summary?.totalRevenue ?? 0;
-          setSalesData((prev) => {
-            const updated = [...prev];
-            updated[6] = omzetHariIni;
-            return updated;
-          });
         }
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [storeId, status]);
+        const tops = Object.values(productMap)
+          .sort((a, b) => b.sold - a.sold)
+          .slice(0, 5);
+        setTopProducts(tops);
+      }
+    })
+    .catch(console.error)
+    .finally(() => setLoading(false));
+ 
+}, [storeId, status]);
 
   // Metric cards
   const totalOmzet = salesData[6];

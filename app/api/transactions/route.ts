@@ -59,6 +59,7 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const storeId = searchParams.get("storeId");
+  const date = searchParams.get("date"); // format: "2026-04-07"
 
   if (!storeId) {
     return NextResponse.json(
@@ -68,7 +69,16 @@ export async function GET(req: Request) {
   }
 
   const transactions = await prisma.transaction.findMany({
-    where: { storeId },
+    where: {
+      storeId,
+      // ← filter by date kalau ada
+      ...(date && {
+        createdAt: {
+          gte: new Date(`${date}T00:00:00.000Z`),
+          lte: new Date(`${date}T23:59:59.999Z`),
+        },
+      }),
+    },
     include: { items: true },
     orderBy: { createdAt: "desc" },
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Script from "next/script";
@@ -23,9 +23,7 @@ function formatRupiah(amount: number): string {
 }
 
 declare global {
-  interface Window {
-    snap: any;
-  }
+  interface Window { snap: any; }
 }
 
 export default function KasirPage() {
@@ -33,18 +31,13 @@ export default function KasirPage() {
   const { data: session } = useSession();
   const storeId = (session?.user as any)?.storeId ?? "";
   const userId = session?.user?.id ?? "";
+  const strutRef = useRef<HTMLDivElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
-
-  const categories = useMemo(
-    () => [
-      "Semua",
-      ...Array.from(
-        new Set(products.map((p) => p.category).filter(Boolean) as string[])
-      ),
-    ],
-    [products]
-  );
+  const categories = useMemo(() => [
+    "Semua",
+    ...Array.from(new Set(products.map((p) => p.category).filter(Boolean) as string[])),
+  ], [products]);
 
   const [activeCategory, setActiveCategory] = useState("Semua");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -54,14 +47,14 @@ export default function KasirPage() {
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "qris">("cash");
   const [qrisLoading, setQrisLoading] = useState(false);
+  const [showStruk, setShowStruk] = useState(false);
+  const [lastTransaction, setLastTransaction] = useState<any>(null);
 
   useEffect(() => {
     if (!storeId) return;
     fetch(`/api/products?storeId=${storeId}`)
       .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setProducts(data);
-      })
+      .then((data) => { if (Array.isArray(data)) setProducts(data); })
       .catch(() => console.error("Gagal fetch produk"));
   }, [storeId]);
 
@@ -74,27 +67,36 @@ export default function KasirPage() {
   function addToCart(product: Product) {
     setCart((prev) => {
       const existing = prev.find((c) => c.id === product.id);
-      if (existing) {
-        return prev.map((c) =>
-          c.id === product.id ? { ...c, qty: c.qty + 1 } : c
-        );
-      }
+      if (existing) return prev.map((c) => c.id === product.id ? { ...c, qty: c.qty + 1 } : c);
       return [...prev, { ...product, qty: 1 }];
     });
   }
 
   function updateQty(id: string, delta: number) {
     setCart((prev) =>
-      prev
-        .map((c) => (c.id === id ? { ...c, qty: c.qty + delta } : c))
-        .filter((c) => c.qty > 0)
+      prev.map((c) => c.id === id ? { ...c, qty: c.qty + delta } : c).filter((c) => c.qty > 0)
     );
+  }
+
+  function setQtyDirect(id: string, val: string) {
+    const num = parseInt(val);
+    if (isNaN(num) || num < 0) return;
+    if (num === 0) {
+      setCart((prev) => prev.filter((c) => c.id !== id));
+    } else {
+      setCart((prev) => prev.map((c) => c.id === id ? { ...c, qty: num } : c));
+    }
+  }
+
+  function removeFromCart(id: string) {
+    setCart((prev) => prev.filter((c) => c.id !== id));
   }
 
   function clearCart() {
     setCart([]);
     setPaid("");
     setSuccess(false);
+    setShowStruk(false);
     setPaymentMethod("cash");
   }
 
@@ -104,19 +106,36 @@ export default function KasirPage() {
   const paidNum = parseInt(paid.replace(/\D/g, "")) || 0;
   const kembalian = paidNum - total;
 
+  function printStruk() {
+    const content = strutRef.current;
+    if (!content) return;
+    const win = window.open("", "_blank", "width=400,height=600");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Struk</title>
+      <style>
+        body { font-family: monospace; font-size: 12px; padding: 16px; max-width: 300px; margin: 0 auto; }
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        .row { display: flex; justify-content: space-between; }
+        .total { font-size: 14px; font-weight: bold; }
+      </style></head>
+      <body>${content.innerHTML}</body></html>
+    `);
+    win.document.close();
+    win.focus();
+    win.print();
+    win.close();
+  }
+
   async function saveTransaction(method: "cash" | "qris") {
     const res = await fetch("/api/transactions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        storeId,
-        userId,
-        paymentMethod: method,
-        items: cart.map((item) => ({
-          productId: item.id,
-          qty: item.qty,
-          price: item.price,
-        })),
+        storeId, userId, paymentMethod: method,
+        items: cart.map((item) => ({ productId: item.id, qty: item.qty, price: item.price })),
       }),
     });
 
@@ -127,6 +146,8 @@ export default function KasirPage() {
     }
 
     if (!res.ok) throw new Error("Gagal menyimpan transaksi");
+    const data = await res.json();
+    setLastTransaction(data);
     return true;
   }
 
@@ -139,6 +160,7 @@ export default function KasirPage() {
       try {
         await saveTransaction("cash");
         setSuccess(true);
+        setShowStruk(true);
       } catch (err) {
         console.error(err);
         alert("Transaksi gagal disimpan. Coba lagi.");
@@ -156,24 +178,14 @@ export default function KasirPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, total }),
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Gagal generate QRIS");
 
       window.snap.pay(data.token, {
-        onSuccess: async () => {
-          await saveTransaction("qris");
-          setSuccess(true);
-        },
-        onPending: () => {
-          alert("Pembayaran pending, cek status di dashboard Midtrans.");
-        },
-        onError: () => {
-          alert("Pembayaran gagal. Coba lagi.");
-        },
-        onClose: () => {
-          console.log("Snap ditutup.");
-        },
+        onSuccess: async () => { await saveTransaction("qris"); setSuccess(true); setShowStruk(true); },
+        onPending: () => { alert("Pembayaran pending."); },
+        onError: () => { alert("Pembayaran gagal. Coba lagi."); },
+        onClose: () => {},
       });
     } catch (err) {
       console.error(err);
@@ -183,13 +195,13 @@ export default function KasirPage() {
     }
   }
 
+  const now = new Date();
+  const trxId = lastTransaction?.id?.slice(0, 8) ?? "—";
+  const trxTime = now.toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
   return (
     <>
-      <Script
-        src="https://app.sandbox.midtrans.com/snap/snap.js"
-        data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
-        strategy="lazyOnload"
-      />
+      <Script src="https://app.sandbox.midtrans.com/snap/snap.js" data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY} strategy="lazyOnload" />
 
       <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -197,17 +209,9 @@ export default function KasirPage() {
             <span className="text-sm font-medium text-gray-900">Kasir</span>
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400">
-                {new Date().toLocaleDateString("id-ID", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })}
+                {now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short", year: "numeric" })}
               </span>
-              <button
-                onClick={() => router.push("/dashboard")}
-                className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
-              >
+              <button onClick={() => router.push("/dashboard")} className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
                 ← Dashboard
               </button>
             </div>
@@ -215,34 +219,17 @@ export default function KasirPage() {
 
           <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0">
             <div className="flex-1 relative">
-              <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"
-                viewBox="0 0 16 16"
-                fill="none"
-                strokeWidth={1.5}
-              >
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" viewBox="0 0 16 16" fill="none" strokeWidth={1.5}>
                 <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
                 <path d="M10.5 10.5L14 14" stroke="currentColor" strokeLinecap="round" />
               </svg>
-              <input
-                type="text"
-                placeholder="Cari menu..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-100 rounded-lg outline-none focus:border-amber-300 transition-colors"
-              />
+              <input type="text" placeholder="Cari menu..." value={search} onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-100 rounded-lg outline-none focus:border-amber-300 transition-colors" />
             </div>
             <div className="flex gap-2 flex-wrap">
               {categories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    activeCategory === cat
-                      ? "bg-amber-700 text-white"
-                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                  }`}
-                >
+                <button key={cat} onClick={() => setActiveCategory(cat)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeCategory === cat ? "bg-amber-700 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
                   {cat}
                 </button>
               ))}
@@ -251,56 +238,32 @@ export default function KasirPage() {
 
           <div className="flex-1 overflow-y-auto p-5">
             {!storeId ? (
-              <div className="flex items-center justify-center h-full text-sm text-gray-400">
-                Memuat sesi...
-              </div>
+              <div className="flex items-center justify-center h-full text-sm text-gray-400">Memuat sesi...</div>
             ) : products.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-sm text-gray-400">
-                Memuat produk...
-              </div>
+              <div className="flex items-center justify-center h-full text-sm text-gray-400">Memuat produk...</div>
             ) : filtered.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-sm text-gray-400">
-                Produk tidak ditemukan.
-              </div>
+              <div className="flex items-center justify-center h-full text-sm text-gray-400">Produk tidak ditemukan.</div>
             ) : (
               <div className="grid grid-cols-4 gap-2">
                 {filtered.map((product) => {
                   const inCart = cart.find((c) => c.id === product.id);
                   return (
-                    <button
-                      key={product.id}
-                      onClick={() => addToCart(product)}
-                      disabled={product.stock === 0}
-                      className={`bg-white border rounded-xl overflow-hidden text-left hover:border-amber-300 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
-                        inCart ? "border-amber-400" : "border-gray-100"
-                      }`}
-                    >
+                    <button key={product.id} onClick={() => addToCart(product)} disabled={product.stock === 0}
+                      className={`bg-white border rounded-xl overflow-hidden text-left hover:border-amber-300 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${inCart ? "border-amber-400" : "border-gray-100"}`}>
                       <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
                         {product.imageUrl ? (
-                          <img
-                            src={product.imageUrl}
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                          />
+                          <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-2xl">🛍️</span>
                         )}
                       </div>
                       <div className="p-2 text-center">
-                        <p className="text-[11px] font-medium text-gray-800 leading-tight mb-0.5 truncate">
-                          {product.name}
-                        </p>
-                        <p className="text-[11px] text-amber-700 font-medium">
-                          {formatRupiah(product.price)}
-                        </p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          Stok: {product.stock}
-                        </p>
+                        <p className="text-[11px] font-medium text-gray-800 leading-tight mb-0.5 truncate">{product.name}</p>
+                        <p className="text-[11px] text-amber-700 font-medium">{formatRupiah(product.price)}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Stok: {product.stock}</p>
                         {inCart && (
                           <div className="mt-1">
-                            <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">
-                              {inCart.qty} di keranjang
-                            </span>
+                            <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">{inCart.qty} di keranjang</span>
                           </div>
                         )}
                       </div>
@@ -312,16 +275,12 @@ export default function KasirPage() {
           </div>
         </div>
 
+        {/* Cart */}
         <aside className="w-80 bg-white border-l border-gray-100 flex flex-col flex-shrink-0">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-900">Pesanan</span>
             {cart.length > 0 && (
-              <button
-                onClick={clearCart}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-              >
-                Kosongkan
-              </button>
+              <button onClick={clearCart} className="text-xs text-gray-400 hover:text-red-500 transition-colors">Kosongkan</button>
             )}
           </div>
 
@@ -340,7 +299,7 @@ export default function KasirPage() {
             ) : (
               <div className="divide-y divide-gray-50">
                 {cart.map((item) => (
-                  <div key={item.id} className="py-3 flex items-center gap-3">
+                  <div key={item.id} className="py-3 flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
                       {item.imageUrl ? (
                         <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
@@ -352,24 +311,32 @@ export default function KasirPage() {
                       <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
                       <p className="text-[10px] text-gray-400">{formatRupiah(item.price)}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => updateQty(item.id, -1)}
-                        className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 text-sm font-medium transition-colors"
-                      >
+                    {/* Qty control dengan input ketik */}
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => updateQty(item.id, -1)}
+                        className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 text-sm font-medium transition-colors">
                         −
                       </button>
-                      <span className="text-xs font-medium text-gray-800 w-4 text-center">{item.qty}</span>
-                      <button
-                        onClick={() => updateQty(item.id, 1)}
-                        className="w-6 h-6 rounded-md bg-amber-100 flex items-center justify-center text-amber-800 hover:bg-amber-200 text-sm font-medium transition-colors"
-                      >
+                      <input
+                        type="number"
+                        min="0"
+                        value={item.qty}
+                        onChange={(e) => setQtyDirect(item.id, e.target.value)}
+                        className="w-8 h-6 text-center text-xs font-medium text-gray-800 border border-gray-200 rounded outline-none focus:border-amber-400"
+                      />
+                      <button onClick={() => updateQty(item.id, 1)}
+                        className="w-6 h-6 rounded-md bg-amber-100 flex items-center justify-center text-amber-800 hover:bg-amber-200 text-sm font-medium transition-colors">
                         +
                       </button>
                     </div>
-                    <span className="text-xs font-medium text-gray-700 min-w-[56px] text-right">
-                      {formatRupiah(item.price * item.qty)}
-                    </span>
+                    <span className="text-xs font-medium text-gray-700 min-w-[50px] text-right">{formatRupiah(item.price * item.qty)}</span>
+                    {/* Tombol hapus */}
+                    <button onClick={() => removeFromCart(item.id)}
+                      className="ml-1 p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0">
+                      <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
+                        <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeLinecap="round" />
+                      </svg>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -380,12 +347,10 @@ export default function KasirPage() {
             <div className="px-5 py-4 border-t border-gray-100">
               <div className="space-y-1.5 mb-4">
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>Subtotal</span>
-                  <span>{formatRupiah(subtotal)}</span>
+                  <span>Subtotal</span><span>{formatRupiah(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>Pajak (10%)</span>
-                  <span>{formatRupiah(tax)}</span>
+                  <span>Pajak (10%)</span><span>{formatRupiah(tax)}</span>
                 </div>
                 <div className="flex justify-between text-sm font-medium text-gray-900 pt-2 border-t border-gray-100">
                   <span>Total</span>
@@ -396,24 +361,12 @@ export default function KasirPage() {
               <div className="mb-3">
                 <label className="text-[10px] text-gray-400 mb-1 block">Metode Pembayaran</label>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => setPaymentMethod("cash")}
-                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${
-                      paymentMethod === "cash"
-                        ? "bg-amber-700 text-white border-amber-700"
-                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
+                  <button onClick={() => setPaymentMethod("cash")}
+                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${paymentMethod === "cash" ? "bg-amber-700 text-white border-amber-700" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
                     💵 Cash
                   </button>
-                  <button
-                    onClick={() => setPaymentMethod("qris")}
-                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${
-                      paymentMethod === "qris"
-                        ? "bg-amber-700 text-white border-amber-700"
-                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
+                  <button onClick={() => setPaymentMethod("qris")}
+                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${paymentMethod === "qris" ? "bg-amber-700 text-white border-amber-700" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
                     📱 QRIS
                   </button>
                 </div>
@@ -422,80 +375,85 @@ export default function KasirPage() {
               {paymentMethod === "cash" && (
                 <div className="mb-3">
                   <label className="text-[10px] text-black mb-1 block">Uang diterima</label>
-                  <input
-                    type="text"
-                    placeholder="Rp 0"
-                    value={paid}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/\D/g, "");
-                      setPaid(raw ? "Rp " + parseInt(raw).toLocaleString("id-ID") : "");
-                    }}
-                    className="w-full px-3 py-2 text-sm border text-black border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors"
-                  />
-                  {paidNum > 0 && paidNum >= total && (
-                    <p className="text-xs text-emerald-600 mt-1">
-                      Kembalian: {formatRupiah(kembalian)}
-                    </p>
-                  )}
-                  {paidNum > 0 && paidNum < total && (
-                    <p className="text-xs text-red-500 mt-1">
-                      Kurang: {formatRupiah(total - paidNum)}
-                    </p>
-                  )}
+                  <input type="text" placeholder="Rp 0" value={paid}
+                    onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setPaid(raw ? "Rp " + parseInt(raw).toLocaleString("id-ID") : ""); }}
+                    className="w-full px-3 py-2 text-sm border text-black border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors" />
+                  {paidNum > 0 && paidNum >= total && <p className="text-xs text-emerald-600 mt-1">Kembalian: {formatRupiah(kembalian)}</p>}
+                  {paidNum > 0 && paidNum < total && <p className="text-xs text-red-500 mt-1">Kurang: {formatRupiah(total - paidNum)}</p>}
                 </div>
               )}
 
-              <button
-                onClick={handleBayar}
-                disabled={
-                  cart.length === 0 ||
-                  (paymentMethod === "cash" && paidNum < total) ||
-                  loading ||
-                  qrisLoading
-                }
-                className="w-full py-2.5 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
+              <button onClick={handleBayar}
+                disabled={cart.length === 0 || (paymentMethod === "cash" && paidNum < total) || loading || qrisLoading}
+                className="w-full py-2.5 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                 {loading || qrisLoading ? "Memproses..." : paymentMethod === "qris" ? "Bayar via QRIS" : "Bayar Cash"}
               </button>
             </div>
           )}
         </aside>
 
+        {/* Modal Sukses + Struk */}
         {success && (
-          <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
-            onClick={clearCart}
-          >
-            <div
-              className="bg-white rounded-2xl p-8 w-80 text-center"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg viewBox="0 0 24 24" className="w-7 h-7 text-emerald-500" fill="none" strokeWidth={2}>
-                  <path d="M5 13l4 4L19 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl w-80 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+
+              {/* Struk */}
+              <div ref={strutRef} className="px-6 py-5 border-b border-dashed border-gray-200">
+                <div className="text-center mb-3">
+                  <p className="text-sm font-bold text-gray-900">KOPI NUSANTARA</p>
+                  <p className="text-[10px] text-gray-400">{trxTime}</p>
+                  <p className="text-[10px] text-gray-400">No: {trxId}</p>
+                </div>
+                <div className="space-y-1 mb-3">
+                  {cart.map((item) => (
+                    <div key={item.id} className="flex justify-between text-xs text-gray-700">
+                      <span className="flex-1 truncate pr-2">{item.name} x{item.qty}</span>
+                      <span className="flex-shrink-0">{formatRupiah(item.price * item.qty)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-dashed border-gray-200 pt-2 space-y-1">
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Subtotal</span><span>{formatRupiah(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Pajak (10%)</span><span>{formatRupiah(tax)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold text-gray-900 pt-1">
+                    <span>Total</span><span>{formatRupiah(total)}</span>
+                  </div>
+                  {paymentMethod === "cash" && (
+                    <>
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>Bayar</span><span>{formatRupiah(paidNum)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-emerald-600 font-medium">
+                        <span>Kembalian</span><span>{formatRupiah(kembalian)}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Metode</span><span>{paymentMethod === "cash" ? "Cash" : "QRIS"}</span>
+                  </div>
+                </div>
+                <p className="text-center text-[10px] text-gray-400 mt-3">Terima kasih!</p>
               </div>
-              <p className="text-base font-medium text-gray-900 mb-1">Pembayaran Berhasil</p>
-              <p className="text-sm text-gray-400 mb-1">Total: {formatRupiah(total)}</p>
-              <p className="text-xs text-gray-400 mb-1">
-                {paymentMethod === "cash" ? "💵 Cash" : "📱 QRIS"}
-              </p>
-              {paymentMethod === "cash" && (
-                <p className="text-sm text-emerald-600 mb-6">Kembalian: {formatRupiah(kembalian)}</p>
-              )}
-              {paymentMethod === "qris" && <div className="mb-6" />}
-              <button
-                onClick={clearCart}
-                className="w-full py-2.5 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors mb-2"
-              >
-                Transaksi Berikutnya
-              </button>
-              <button
-                onClick={() => router.push("/dashboard")}
-                className="w-full py-2.5 bg-white text-gray-500 text-sm font-medium rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
-              >
-                Kembali ke Dashboard
-              </button>
+
+              {/* Tombol aksi */}
+              <div className="px-6 py-4 space-y-2">
+                <button onClick={printStruk}
+                  className="w-full py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors">
+                  🖨️ Cetak Struk
+                </button>
+                <button onClick={clearCart}
+                  className="w-full py-2 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors">
+                  Transaksi Berikutnya
+                </button>
+                <button onClick={() => router.push("/dashboard")}
+                  className="w-full py-2 bg-white text-gray-500 text-sm font-medium rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+                  Kembali ke Dashboard
+                </button>
+              </div>
             </div>
           </div>
         )}

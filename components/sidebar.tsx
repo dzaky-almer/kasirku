@@ -46,6 +46,16 @@ const navItems = [
       </>
     ),
   },
+  {
+    label: "Shift",
+    href: "/shifts",
+    icon: (
+      <>
+        <circle cx="8" cy="8" r="6" stroke="currentColor" />
+        <path d="M8 4v4l2 2" stroke="currentColor" />
+      </>
+    ),
+  },
 ];
 
 const hiddenOn = ["/login", "/register"];

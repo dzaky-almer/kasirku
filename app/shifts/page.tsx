@@ -5,13 +5,7 @@ import { useEffect, useState } from "react";
 interface Shift {
   id: string;
   opening_cash: number;
-  closing_cash: number | null;
   total_sales: number;
-  total_transactions: number;
-  status: string;
-  opened_at: string;
-  closed_at: string | null;
-  notes: string | null;
 }
 
 export default function ShiftsPage() {
@@ -20,7 +14,6 @@ export default function ShiftsPage() {
   const [closingCash, setClosingCash] = useState(0);
   const [notes, setNotes] = useState("");
 
-  // ambil shift aktif
   const fetchShift = async () => {
     const res = await fetch("/api/shifts/current");
     const data = await res.json();
@@ -31,78 +24,134 @@ export default function ShiftsPage() {
     fetchShift();
   }, []);
 
-  // buka shift
-  const openShiftHandler = async () => {
+  const handleOpenShift = async () => {
     const res = await fetch("/api/shifts/open", {
       method: "POST",
       body: JSON.stringify({
         opening_cash: openingCash,
-        userId: "USER_ID_KAMU"
-      })
+        userId: "USER_ID_KAMU",
+      }),
     });
 
     const data = await res.json();
     setOpenShift(data);
   };
 
-  // tutup shift
-  const closeShiftHandler = async () => {
-  if (!openShift) return;
+  const handleCloseShift = async () => {
+    if (!openShift) return;
 
-  // 💰 hitung expected cash
-  const expected = openShift.opening_cash + openShift.total_sales;
-
-  // 💰 selisih
-  const diff = closingCash - expected;
-
-  // tampilkan ke user
-  alert(`Selisih kas: ${diff}`);
-
-    const res = await fetch("/api/shifts/close", {
+    await fetch("/api/shifts/close", {
       method: "POST",
       body: JSON.stringify({
-        shiftId: openShift?.id,
+        shiftId: openShift.id,
         closing_cash: closingCash,
-        notes
-      })
+        notes,
+      }),
     });
 
-    await res.json();
     setOpenShift(null);
   };
 
-  return (
-    <div style={{ padding: 20 }}>
-      <h1>Shift Kasir</h1>
+  const expected =
+    (openShift?.opening_cash || 0) + (openShift?.total_sales || 0);
 
-      {!openShift ? (
-        <div>
-          <h3>Buka Shift</h3>
+  const diff = closingCash - (expected || 0);
+
+  return (
+    <div className="p-6">
+      <h1 className="text-xl font-bold mb-6 text-gray-900">Shift Kasir</h1>
+
+      {/* OPEN SHIFT */}
+      {!openShift && (
+        <div className="bg-white shadow-lg rounded-2xl p-6 max-w-md">
+          <h2 className="text-lg font-medium mb-4 text-gray-900">Buka Shift</h2>
+
           <input
             type="number"
             placeholder="Uang awal"
+            className="w-full border p-2 rounded mb-4 text-gray-400 focus:text-gray-900 focus:border-amber-400 transition-colors"
             onChange={(e) => setOpeningCash(Number(e.target.value))}
           />
-          <button onClick={openShiftHandler}>Buka Shift</button>
+
+          <button
+            onClick={handleOpenShift}
+            className="w-full bg-green-500 text-white py-2 rounded-lg hover:bg-green-600"
+          >
+            Buka Shift
+          </button>
         </div>
-      ) : (
-        <div>
-          <h3>Shift Aktif</h3>
-          <p>Opening Cash: {openShift.opening_cash}</p>
+      )}
 
-          <h3>Tutup Shift</h3>
-          <input
-            type="number"
-            placeholder="Uang akhir"
-            onChange={(e) => setClosingCash(Number(e.target.value))}
-          />
+      {/* ACTIVE SHIFT */}
+      {openShift && (
+        <div className="grid md:grid-cols-2 gap-6">
+          
+          {/* INFO CARD */}
+          <div className="bg-white shadow-lg rounded-2xl p-6">
+            <h2 className="text-lg font-medium mb-4 text-gray-900">Shift Aktif</h2>
 
-          <textarea
-            placeholder="Catatan"
-            onChange={(e) => setNotes(e.target.value)}
-          />
+            <div className="space-y-2 text-gray-700">
+              <p>
+                💰 Opening Cash:{" "}
+                <span className="font-semibold">
+                  {openShift.opening_cash}
+                </span>
+              </p>
 
-          <button onClick={closeShiftHandler}>Tutup Shift</button>
+              <p>
+                📈 Total Sales:{" "}
+                <span className="font-semibold text-green-600">
+                  {openShift.total_sales}
+                </span>
+              </p>
+
+              <p>
+                💵 Expected Cash:{" "}
+                <span className="font-semibold">
+                  {expected}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* CLOSE SHIFT */}
+          <div className="bg-white shadow-lg rounded-2xl p-6">
+            <h2 className="text-lg font-medium mb-4 text-gray-900">Tutup Shift</h2>
+
+            <input
+              type="number"
+              placeholder="Uang akhir"
+              className="w-full border p-2 rounded mb-3 text-gray-400 focus:text-gray-900 focus:border-amber-400 transition-colors"
+              onChange={(e) => setClosingCash(Number(e.target.value))}
+            />
+
+            <textarea
+              placeholder="Catatan"
+              className="w-full border p-2 rounded mb-3 text-gray-400 focus:text-gray-900 focus:border-amber-400 transition-colors"
+              onChange={(e) => setNotes(e.target.value)}
+            />
+
+            {/* SELISIH */}
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg text-gray-700">
+              <p>
+                Selisih:{" "}
+                <span
+                  className={`font-bold ${
+                    diff < 0 ? "text-red-500" : "text-green-600"
+                  }`}
+                >
+                  {diff}
+                </span>
+              </p>
+            </div>
+
+            <button
+              onClick={handleCloseShift}
+              className="w-full bg-red-500 text-white py-2 rounded-lg hover:bg-red-600"
+            >
+              Tutup Shift
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -106,28 +106,88 @@ export default function KasirPage() {
   const paidNum = parseInt(paid.replace(/\D/g, "")) || 0;
   const kembalian = paidNum - total;
 
-  function printStruk() {
-    const content = strutRef.current;
-    if (!content) return;
-    const win = window.open("", "_blank", "width=400,height=600");
-    if (!win) return;
-    win.document.write(`
-      <html><head><title>Struk</title>
-      <style>
-        body { font-family: monospace; font-size: 12px; padding: 16px; max-width: 300px; margin: 0 auto; }
-        .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .divider { border-top: 1px dashed #000; margin: 8px 0; }
-        .row { display: flex; justify-content: space-between; }
-        .total { font-size: 14px; font-weight: bold; }
-      </style></head>
-      <body>${content.innerHTML}</body></html>
-    `);
-    win.document.close();
-    win.focus();
-    win.print();
-    win.close();
+ function printStruk() {
+  const now = new Date();
+  const trxTime = now.toLocaleString("id-ID", {
+    day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit"
+  });
+
+  const itemRows = cart.map((item) =>
+    `<tr>
+      <td style="padding:1px 0">${item.name}</td>
+      <td style="text-align:right;white-space:nowrap">${item.qty} x ${formatRupiah(item.price)}</td>
+    </tr>
+    <tr>
+      <td colspan="2" style="text-align:right;padding-bottom:3px">${formatRupiah(item.price * item.qty)}</td>
+    </tr>`
+  ).join("");
+
+  const cashRows = paymentMethod === "cash" ? `
+    <tr><td>Tunai</td><td style="text-align:right">${formatRupiah(paidNum)}</td></tr>
+    <tr><td>Kembali</td><td style="text-align:right">${formatRupiah(kembalian)}</td></tr>
+  ` : `<tr><td colspan="2" style="text-align:center">-- Dibayar via QRIS --</td></tr>`;
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Struk</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', Courier, monospace; font-size: 12px; width: 300px; margin: 0 auto; padding: 8px; color: #000; }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .store-name { font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+  .divider-solid { border-top: 1px solid #000; margin: 6px 0; }
+  .divider-dash { border-top: 1px dashed #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  td { vertical-align: top; font-size: 12px; }
+  .total-row td { font-size: 13px; font-weight: bold; padding-top: 3px; }
+  .footer { text-align: center; margin-top: 8px; font-size: 11px; }
+  @media print {
+    body { width: 100%; }
+    @page { margin: 4mm; size: 80mm auto; }
   }
+</style>
+</head><body>
+  <div class="center">
+    <div class="store-name">KOPI NUSANTARA</div>
+    <div>Jl. Kopi No. 1, Jakarta</div>
+    <div>Telp: 021-12345678</div>
+  </div>
+  <div class="divider-solid"></div>
+  <table>
+    <tr><td>No. Transaksi</td><td style="text-align:right">#${trxId.toUpperCase()}</td></tr>
+    <tr><td>Tanggal</td><td style="text-align:right">${trxTime}</td></tr>
+    <tr><td>Kasir</td><td style="text-align:right">${session?.user?.name ?? "Kasir"}</td></tr>
+  </table>
+  <div class="divider-dash"></div>
+  <table>${itemRows}</table>
+  <div class="divider-dash"></div>
+  <table>
+    <tr><td>Subtotal</td><td style="text-align:right">${formatRupiah(subtotal)}</td></tr>
+    <tr><td>PPN 10%</td><td style="text-align:right">${formatRupiah(tax)}</td></tr>
+    <tr class="total-row"><td>TOTAL</td><td style="text-align:right">${formatRupiah(total)}</td></tr>
+  </table>
+  <div class="divider-dash"></div>
+  <table>
+    <tr><td>Metode Bayar</td><td style="text-align:right">${paymentMethod === "cash" ? "TUNAI" : "QRIS"}</td></tr>
+    ${cashRows}
+  </table>
+  <div class="divider-solid"></div>
+  <div class="footer">
+    <div>*** TERIMA KASIH ***</div>
+    <div>Barang yang sudah dibeli</div>
+    <div>tidak dapat dikembalikan</div>
+    <div style="margin-top:4px;font-size:10px">Powered by KasirKu</div>
+  </div>
+</body></html>`;
+
+  const win = window.open("", "_blank", "width=400,height=700");
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); win.close(); }, 300);
+}
 
   async function saveTransaction(method: "cash" | "qris") {
     const res = await fetch("/api/transactions", {
@@ -159,8 +219,8 @@ export default function KasirPage() {
       setLoading(true);
       try {
         await saveTransaction("cash");
-        setSuccess(true);
-        setShowStruk(true);
+        setSuccess(true); setShowStruk(true);
+setTimeout(() => printStruk(), 400);
       } catch (err) {
         console.error(err);
         alert("Transaksi gagal disimpan. Coba lagi.");
@@ -182,7 +242,11 @@ export default function KasirPage() {
       if (!res.ok) throw new Error(data.error || "Gagal generate QRIS");
 
       window.snap.pay(data.token, {
-        onSuccess: async () => { await saveTransaction("qris"); setSuccess(true); setShowStruk(true); },
+        onSuccess: async () => {
+  await saveTransaction("qris");
+  setSuccess(true); setShowStruk(true);
+  setTimeout(() => printStruk(), 400);
+},
         onPending: () => { alert("Pembayaran pending."); },
         onError: () => { alert("Pembayaran gagal. Coba lagi."); },
         onClose: () => {},

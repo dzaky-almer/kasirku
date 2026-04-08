@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { email, password, storeName, storeType } = body; // ← tambah storeName, storeType
+  const { email, password, storeName, storeType, address, phone } = body;
 
   if (!email || !password || !storeName) {
     return NextResponse.json(
@@ -15,10 +15,7 @@ export async function POST(req: Request) {
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    return NextResponse.json(
-      { error: "Email sudah terdaftar" },
-      { status: 409 }
-    );
+    return NextResponse.json({ error: "Email sudah terdaftar" }, { status: 409 });
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
@@ -27,10 +24,12 @@ export async function POST(req: Request) {
     data: {
       email,
       password: hashedPassword,
-      stores: {                          // ← buat store sekaligus
+      stores: {
         create: {
           name: storeName,
           type: storeType ?? "cafe",
+          address: address ?? null,
+          phone: phone ?? null,
         },
       },
     },

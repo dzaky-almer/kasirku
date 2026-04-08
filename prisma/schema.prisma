@@ -12,6 +12,7 @@ model User {
   password     String
   createdAt    DateTime      @default(now())
   stores       Store[]
+  shifts Shift[]
   subscription Subscription?
 }
 
@@ -23,6 +24,7 @@ model Store {
   createdAt    DateTime      @default(now())
   user         User          @relation(fields: [userId], references: [id])
   products     Product[]
+  shifts Shift[]
   transactions Transaction[]
 }
 
@@ -38,8 +40,8 @@ model Product {
   unit             String            @default("pcs")
   category         String?
   imageUrl         String?
-  storeId          String
-  store            Store             @relation(fields: [storeId], references: [id])
+  storeId String
+  store   Store @relation(fields: [storeId], references: [id])
   transactionItems TransactionItem[]
 }
 
@@ -86,7 +88,12 @@ model Shift {
   opened_at           DateTime @default(now())
   closed_at           DateTime?
   notes               String?
-  transactions Transaction[]  // relasi ke transaksi  
 
   userId              String
+  user                User @relation(fields: [userId], references: [id])
+
+  storeId             String
+  store               Store @relation(fields: [storeId], references: [id])
+
+  transactions        Transaction[]
 }

@@ -49,6 +49,7 @@ export default function KasirPage() {
   const [qrisLoading, setQrisLoading] = useState(false);
   const [showStruk, setShowStruk] = useState(false);
   const [lastTransaction, setLastTransaction] = useState<any>(null);
+  const [shift, setShift] = useState<any>(null);
 
   useEffect(() => {
     if (!storeId) return;
@@ -57,6 +58,20 @@ export default function KasirPage() {
       .then((data) => { if (Array.isArray(data)) setProducts(data); })
       .catch(() => console.error("Gagal fetch produk"));
   }, [storeId]);
+
+useEffect(() => {
+  fetch("/api/shifts/current")
+    .then(async (res) => {
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error();
+      setShift(data);
+    })
+    .catch(() => {
+      console.log("Shift belum ada");
+      setShift(null);
+    });
+}, []);
+
 
   const filtered = products.filter((p) => {
     const matchCat = activeCategory === "Semua" || p.category === activeCategory;
@@ -190,26 +205,37 @@ export default function KasirPage() {
 }
 
   async function saveTransaction(method: "cash" | "qris") {
-    const res = await fetch("/api/transactions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storeId, userId, paymentMethod: method,
-        items: cart.map((item) => ({ productId: item.id, qty: item.qty, price: item.price })),
-      }),
-    });
-
-    if (res.status === 403) {
-      alert("Langganan kamu sudah habis. Perpanjang untuk melanjutkan.");
-      router.push("/pricing");
-      return false;
-    }
-
-    if (!res.ok) throw new Error("Gagal menyimpan transaksi");
-    const data = await res.json();
-    setLastTransaction(data);
-    return true;
+  if (!shift?.id) {
+    alert("Shift belum dibuka!");
+    return false;
   }
+
+  const res = await fetch("/api/transactions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      storeId,
+      userId,
+      shiftId: shift.id, 
+      paymentMethod: method,
+      items: cart.map((item) => ({
+        productId: item.id,
+        qty: item.qty,
+        price: item.price,
+      })),
+    }),
+  });
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    console.error(data);
+    throw new Error(data?.error || "Gagal menyimpan transaksi");
+  }
+
+  setLastTransaction(data);
+  return true;
+}
 
   async function handleBayar() {
     if (cart.length === 0 || !storeId || !userId) return;

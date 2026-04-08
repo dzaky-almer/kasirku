@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 
 interface Shift {
   id: string;
@@ -9,10 +10,12 @@ interface Shift {
 }
 
 export default function ShiftsPage() {
+  const { data: session } = useSession();
   const [openShift, setOpenShift] = useState<Shift | null>(null);
   const [openingCash, setOpeningCash] = useState(0);
   const [closingCash, setClosingCash] = useState(0);
   const [notes, setNotes] = useState("");
+  
 
   const fetchShift = async () => {
     const res = await fetch("/api/shifts/current");
@@ -24,18 +27,41 @@ export default function ShiftsPage() {
     fetchShift();
   }, []);
 
-  const handleOpenShift = async () => {
-    const res = await fetch("/api/shifts/open", {
-      method: "POST",
-      body: JSON.stringify({
-        opening_cash: openingCash,
-        userId: "USER_ID_KAMU",
-      }),
-    });
+const handleOpenShift = async () => {
+  const userId = session?.user?.id;
+  const storeId = (session?.user as any)?.storeId;
 
-    const data = await res.json();
-    setOpenShift(data);
-  };
+  if (!userId || !storeId) {
+    alert("Session belum siap 😭");
+    return;
+  }
+
+  const res = await fetch("/api/shifts/open", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json", 
+    },
+    body: JSON.stringify({
+      opening_cash: openingCash,
+      userId,
+      storeId,
+    }),
+  });
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    alert(data?.error || "Gagal buka shift 😭");
+    return;
+  }
+
+  setOpenShift(data);
+};
 
   const handleCloseShift = async () => {
     if (!openShift) return;

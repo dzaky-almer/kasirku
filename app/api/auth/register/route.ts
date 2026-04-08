@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { email, password, storeName, storeType, address, phone } = body;
+  const { email, password, storeName, storeType } = body;
 
   if (!email || !password || !storeName) {
     return NextResponse.json(
@@ -28,8 +28,6 @@ export async function POST(req: Request) {
         create: {
           name: storeName,
           type: storeType ?? "cafe",
-          address: address ?? null,
-          phone: phone ?? null,
         },
       },
     },

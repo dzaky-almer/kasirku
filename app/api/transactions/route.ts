@@ -3,15 +3,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   const body = await req.json();
-
   const { storeId, userId, items: cartItems, paymentMethod, shiftId } = body;
 
-  // validasi shift
   if (!shiftId) {
-    return NextResponse.json(
-      { error: "Shift belum dibuka" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Shift belum dibuka" }, { status: 400 });
   }
 
   if (!storeId || !userId || !cartItems || cartItems.length === 0) {
@@ -21,14 +16,12 @@ export async function POST(req: Request) {
     );
   }
 
-
   const total = cartItems.reduce(
     (sum: number, item: { price: number; qty: number }) =>
       sum + item.price * item.qty,
     0
   );
 
-  
   try {
     const transaction = await prisma.transaction.create({
       data: {
@@ -37,7 +30,11 @@ export async function POST(req: Request) {
         shiftId,
         paymentMethod: paymentMethod ?? "cash",
         items: {
-          create: cartItems.map((item: any) => ({
+          create: cartItems.map((item: {
+            productId: string;
+            qty: number;
+            price: number;
+          }) => ({
             productId: item.productId,
             qty: item.qty,
             price: item.price,
@@ -50,12 +47,8 @@ export async function POST(req: Request) {
     await prisma.shift.update({
       where: { id: shiftId },
       data: {
-        total_sales: {
-          increment: total,
-        },
-        total_transactions: {
-          increment: 1,
-        },
+        total_sales: { increment: total },
+        total_transactions: { increment: 1 },
       },
     });
 
@@ -67,7 +60,6 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(transaction, { status: 201 });
-
   } catch (error) {
     console.error("Transaction error:", error);
     return NextResponse.json(
@@ -75,4 +67,31 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+}
+
+// ← INI YANG HILANG dari kode terbaru kamu
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const storeId = searchParams.get("storeId");
+  const date = searchParams.get("date");
+
+  if (!storeId) {
+    return NextResponse.json({ error: "storeId wajib diisi" }, { status: 400 });
+  }
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      storeId,
+      ...(date && {
+        createdAt: {
+          gte: new Date(`${date}T00:00:00.000Z`),
+          lte: new Date(`${date}T23:59:59.999Z`),
+        },
+      }),
+    },
+    include: { items: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return NextResponse.json(transactions);
 }

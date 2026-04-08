@@ -65,12 +65,7 @@ export default function DashboardPage() {
   Promise.all(
     last7Dates.map((date) =>
       fetch(`/api/transactions?storeId=${storeId}&date=${date}`)
-        .then(async (r) => {
-  if (!r.ok) return [];
-
-  const text = await r.text();
-  return text ? JSON.parse(text) : [];
-})
+        .then((r) => r.json())
         .then((data: any[]) => {
           if (!Array.isArray(data)) return 0;
           return data.reduce((sum, t) => sum + (t.total ?? 0), 0);
@@ -83,12 +78,7 @@ export default function DashboardPage() {
     // Hitung metric dari transaksi hari ini (index terakhir)
     // Fetch ulang transaksi hari ini untuk recent list
     fetch(`/api/transactions?storeId=${storeId}&date=${today}`)
-      .then(async (r) => {
-  if (!r.ok) return [];
-
-  const text = await r.text();
-  return text ? JSON.parse(text) : [];
-})
+      .then((r) => r.json())
       .then((data: any[]) => {
         if (!Array.isArray(data)) return;
  

@@ -74,4 +74,21 @@ model Transaction {
   createdAt     DateTime          @default(now())
   store         Store             @relation(fields: [storeId], references: [id])
   items         TransactionItem[]
+  shiftId  String
+  shift    Shift   @relation(fields: [shiftId], references: [id])
+}
+
+model Shift {
+  id                  String   @id @default(uuid())
+  opening_cash        Float
+  closing_cash        Float?
+  total_sales         Float    @default(0)
+  total_transactions  Int      @default(0)
+  status              String   // OPEN | CLOSED
+  opened_at           DateTime @default(now())
+  closed_at           DateTime?
+  notes               String?
+  transactions Transaction[]  // relasi ke transaksi  
+
+  userId              String
 }

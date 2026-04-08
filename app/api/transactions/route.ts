@@ -3,7 +3,16 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { storeId, userId, items, paymentMethod } = body;
+
+  const { storeId, userId, items, paymentMethod, shiftId } = body;
+
+  // validasi shift
+  if (!shiftId) {
+    return NextResponse.json(
+      { error: "Shift belum dibuka" },
+      { status: 400 }
+    );
+  }
 
   if (!storeId || !userId || !items || items.length === 0) {
     return NextResponse.json(
@@ -12,6 +21,7 @@ export async function POST(req: Request) {
     );
   }
 
+  // hitung total
   const total = items.reduce(
     (sum: number, item: { price: number; qty: number }) =>
       sum + item.price * item.qty,
@@ -23,6 +33,7 @@ export async function POST(req: Request) {
       data: {
         storeId,
         total,
+        shiftId, // ✅ penting
         paymentMethod: paymentMethod ?? "cash",
         items: {
           create: items.map((item: {
@@ -39,6 +50,7 @@ export async function POST(req: Request) {
       include: { items: true },
     });
 
+    // update stok
     for (const item of items) {
       await prisma.product.update({
         where: { id: item.productId },
@@ -47,6 +59,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(transaction, { status: 201 });
+
   } catch (error) {
     console.error("Transaction error:", error);
     return NextResponse.json(
@@ -85,3 +98,4 @@ export async function GET(req: Request) {
 
   return NextResponse.json(transactions);
 }
+

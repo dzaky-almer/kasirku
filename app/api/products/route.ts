@@ -41,6 +41,7 @@ export async function POST(req: Request) {
       unit: unit || "pcs",
       category: category || null,
       imageUrl: imageUrl || null,
+      label: label || null,
     },
   });
 

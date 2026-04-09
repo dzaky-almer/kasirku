@@ -37,6 +37,7 @@ export async function PUT(
       unit: unit || "pcs",
       category: category || null,
       imageUrl: imageUrl || null,
+      label: body.label || null,
     },
   });
 

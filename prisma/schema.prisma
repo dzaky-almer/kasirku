@@ -93,6 +93,8 @@ model Shift {
   userId              String
   user                User @relation(fields: [userId], references: [id])
 
+  cashierName String @default("Kasir")
+
   storeId             String
   store               Store @relation(fields: [storeId], references: [id])
 

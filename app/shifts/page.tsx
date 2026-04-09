@@ -9,25 +9,37 @@ interface Shift {
   total_sales: number;
   total_transactions?: number;
   createdAt?: string;
+  cashierName?: string;
 }
 
 export default function ShiftsPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+
   const [openShift, setOpenShift] = useState<Shift | null>(null);
   const [openingCash, setOpeningCash] = useState<number>(0);
+  const [cashierName, setCashierName] = useState(""); 
   const [closingCash, setClosingCash] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(false);
 
+  // 🔥 FETCH SHIFT AKTIF
   const fetchShift = async () => {
-    const res = await fetch("/api/shifts/current");
-    const data = await res.json();
-    setOpenShift(data?.id ? data : null);
+    try {
+      const res = await fetch("/api/shifts/current");
+      const data = await res.json();
+      setOpenShift(data?.id ? data : null);
+    } catch (err) {
+      console.error("Fetch shift error:", err);
+    }
   };
 
   useEffect(() => {
-    fetchShift();
-  }, []);
+    if (status === "authenticated") {
+      fetchShift();
+    }
+  }, [status]);
 
+  // 🟢 OPEN SHIFT
   const handleOpenShift = async () => {
     const userId = session?.user?.id;
     const storeId = (session?.user as any)?.storeId;
@@ -37,18 +49,34 @@ export default function ShiftsPage() {
       return;
     }
 
+    if (!cashierName) {
+      alert("Nama kasir wajib diisi");
+      return;
+    }
+
+    if (openingCash <= 0) {
+      alert("Uang awal harus diisi");
+      return;
+    }
+
+    setLoading(true);
+
     const res = await fetch("/api/shifts/open", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ opening_cash: openingCash, userId, storeId }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        opening_cash: openingCash,
+        cashierName, // ✅ dari input manual
+        userId,
+        storeId,
+      }),
     });
 
-    let data;
-    try {
-      data = await res.json();
-    } catch {
-      data = null;
-    }
+    const data = await res.json().catch(() => null);
+
+    setLoading(false);
 
     if (!res.ok) {
       alert(data?.error || "Gagal buka shift");
@@ -56,39 +84,54 @@ export default function ShiftsPage() {
     }
 
     setOpenShift(data);
+    setOpeningCash(0);
+    setCashierName(""); // reset input
   };
 
+  // 🔴 CLOSE SHIFT
   const handleCloseShift = async () => {
     if (!openShift) return;
 
+    if (closingCash === null) {
+      alert("Isi uang akhir dulu");
+      return;
+    }
+
+    setLoading(true);
+
     const res = await fetch("/api/shifts/close", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-      shiftId: openShift.id,
-      closing_cash: closingCash ?? 0,
-      notes,
-    }),
+        shiftId: openShift.id,
+        closing_cash: closingCash,
+        notes,
+      }),
     });
 
+    const data = await res.json().catch(() => null);
+
+    setLoading(false);
+
     if (!res.ok) {
-      const data = await res.json().catch(() => null);
       alert(data?.error || "Gagal tutup shift");
       return;
     }
 
     setOpenShift(null);
-    setClosingCash(0);
+    setClosingCash(null);
     setNotes("");
   };
 
-  function formatRupiah(amount: number): string {
+  function formatRupiah(amount: number) {
     if (amount >= 1000000) return `Rp ${(amount / 1000000).toFixed(1)}jt`;
     if (amount >= 1000) return `Rp ${Math.round(amount / 1000)}rb`;
     return `Rp ${amount.toLocaleString("id-ID")}`;
   }
 
-  function getOpenTime(): string {
+  function getOpenTime() {
     if (!openShift?.createdAt) return "—";
     return new Date(openShift.createdAt).toLocaleTimeString("id-ID", {
       hour: "2-digit",
@@ -96,77 +139,82 @@ export default function ShiftsPage() {
     });
   }
 
-  const expected = (openShift?.opening_cash ?? 0) + (openShift?.total_sales ?? 0);
-const diff = closingCash !== null ? closingCash - expected : null;
+  const expected =
+    (openShift?.opening_cash ?? 0) +
+    (openShift?.total_sales ?? 0);
+
+  const diff =
+    closingCash !== null ? closingCash - expected : null;
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* HEADER */}
-        <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">
-          <span className="text-sm font-medium text-gray-900">Shift Kasir</span>
+        <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-900">
+            Shift Kasir
+          </span>
+
           <div className="flex items-center gap-2">
-            {openShift ? (
-              <span className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full">
-                Shift aktif
-              </span>
-            ) : (
-              <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
-                Tidak ada shift aktif
+            <span
+              className={`text-xs px-3 py-1 rounded-full ${
+                openShift
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-gray-100 text-gray-500"
+              }`}
+            >
+              {openShift ? "Shift aktif" : "Tidak ada shift"}
+            </span>
+
+            {/* ✅ tampil nama kasir aktif */}
+            {openShift && (
+              <span className="text-xs bg-amber-50 text-amber-700 px-3 py-1 rounded-full">
+                👤 {openShift.cashierName || "Kasir"}
               </span>
             )}
-            <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
-              {(session?.user as any)?.email ?? "Kasir"}
-            </span>
           </div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-5">
 
-          {/* METRIC CARDS — selalu tampil */}
+          {/* METRIC */}
           <div className="grid grid-cols-3 gap-3 mb-5">
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
-              <p className="text-xs text-gray-400 mb-1">Uang awal</p>
-              <p className="text-xl font-medium text-gray-900">
-                {openShift ? formatRupiah(openShift.opening_cash) : "—"}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">modal shift ini</p>
-            </div>
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
-              <p className="text-xs text-gray-400 mb-1">Total penjualan</p>
-              <p className="text-xl font-medium text-emerald-600">
-                {openShift ? formatRupiah(openShift.total_sales) : "—"}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">dari transaksi shift ini</p>
-            </div>
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
-              <p className="text-xs text-gray-400 mb-1">Expected cash</p>
-              <p className="text-xl font-medium text-gray-900">
-                {openShift ? formatRupiah(expected) : "—"}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">modal + penjualan</p>
-            </div>
+            <Card label="Uang awal" value={openShift ? formatRupiah(openShift.opening_cash) : "—"} />
+            <Card label="Total penjualan" value={openShift ? formatRupiah(openShift.total_sales) : "—"} highlight />
+            <Card label="Expected cash" value={openShift ? formatRupiah(expected) : "—"} />
           </div>
 
-          {/* BUKA SHIFT */}
+          {/* OPEN SHIFT */}
           {!openShift && (
             <div className="bg-white rounded-xl border border-gray-100 p-5 max-w-sm">
-              <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">
+              <p className="text-xs font-medium text-gray-400 mb-4">
                 BUKA SHIFT
               </p>
-              <label className="text-xs text-gray-500 mb-1 block">Uang awal (Rp)</label>
+
+              <input
+                type="text"
+                placeholder="Nama"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 text-black"
+                value={cashierName}
+                onChange={(e) => setCashierName(e.target.value)}
+              />
+
               <input
                 type="number"
-                placeholder="0"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-400 mb-4"
-                onChange={(e) => setOpeningCash(Number(e.target.value) || 0)}
+                placeholder="Uang awal"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 text-black"
+                onChange={(e) =>
+                  setOpeningCash(Number(e.target.value) || 0)
+                }
               />
+
               <button
                 onClick={handleOpenShift}
-                className="w-full bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium py-2.5 rounded-lg transition-colors"
+                disabled={loading}
+                className="w-full bg-amber-700 hover:bg-amber-800 text-white text-sm py-2.5 rounded-lg"
               >
-                Buka shift
+                {loading ? "Memproses..." : "Buka shift"}
               </button>
             </div>
           )}
@@ -175,94 +223,81 @@ const diff = closingCash !== null ? closingCash - expected : null;
           {openShift && (
             <div className="grid grid-cols-2 gap-4">
 
-              {/* INFO SHIFT */}
+              {/* INFO */}
               <div className="bg-white rounded-xl border border-gray-100 p-5">
-                <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">
-                  INFO SHIFT AKTIF
-                </p>
-                <div className="divide-y divide-gray-50">
-                  <div className="flex items-center justify-between py-2.5">
-                    <span className="text-xs text-gray-500">Dibuka pukul</span>
-                    <span className="text-xs font-medium text-gray-900">{getOpenTime()}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2.5">
-                    <span className="text-xs text-gray-500">Uang awal</span>
-                    <span className="text-xs font-medium text-gray-900">
-                      {formatRupiah(openShift.opening_cash)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between py-2.5">
-                    <span className="text-xs text-gray-500">Total penjualan</span>
-                    <span className="text-xs font-medium text-emerald-600">
-                      +{formatRupiah(openShift.total_sales)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between py-2.5">
-                    <span className="text-xs text-gray-500">Transaksi</span>
-                    <span className="text-xs font-medium text-amber-700">
-                      {openShift.total_transactions ?? 0} transaksi
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between py-2.5">
-                    <span className="text-xs text-gray-500">Expected cash</span>
-                    <span className="text-xs font-medium text-gray-900">
-                      {formatRupiah(expected)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between py-2.5">
-                    <span className="text-xs text-gray-500">Status</span>
-                    <span className="text-xs bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full">
-                      Aktif
-                    </span>
-                  </div>
-                </div>
+                <InfoRow label="Kasir" value={openShift.cashierName || "—"} />
+                <InfoRow label="Dibuka" value={getOpenTime()} />
+                <InfoRow label="Transaksi" value={`${openShift.total_transactions ?? 0}`} />
+                <InfoRow label="Expected" value={formatRupiah(expected)} />
               </div>
 
-              {/* TUTUP SHIFT */}
+              {/* CLOSE */}
               <div className="bg-white rounded-xl border border-gray-100 p-5">
-                <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">
-                  TUTUP SHIFT
-                </p>
-
-                <label className="text-xs text-gray-500 mb-1 block">Uang akhir (Rp)</label>
                 <input
                   type="number"
-                  placeholder="0"
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-400 mb-3"
-                  onChange={(e) => setClosingCash(e.target.value === "" ? null : Number(e.target.value))}
+                  placeholder="Uang akhir"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3"
+                  onChange={(e) =>
+                    setClosingCash(
+                      e.target.value === "" ? null : Number(e.target.value)
+                    )
+                  }
                 />
 
-                <label className="text-xs text-gray-500 mb-1 block">Catatan</label>
                 <textarea
-                  placeholder="Catatan opsional..."
-                  rows={3}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-400 mb-3 resize-none"
+                  placeholder="Catatan..."
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3"
                   onChange={(e) => setNotes(e.target.value)}
                 />
 
-                {/* SELISIH */}
-                <div className="bg-gray-50 rounded-lg px-4 py-3 flex items-center justify-between mb-4">
-                  <span className="text-xs text-gray-500">Selisih</span>
-                  {diff === null ? (
-                    <span className="text-xs text-gray-400">Isi uang akhir dulu</span>
-                  ) : (
-                    <span className={`text-sm font-medium ${diff < 0 ? "text-red-500" : "text-emerald-600"}`}>
-                      {diff >= 0 ? "+" : ""}{formatRupiah(diff)}
-                    </span>
-                  )}
+                <div className="mb-4 text-sm">
+                  Selisih:{" "}
+                  <span
+                    className={
+                      diff === null
+                        ? "text-gray-400"
+                        : diff < 0
+                        ? "text-red-500"
+                        : "text-emerald-600"
+                    }
+                  >
+                    {diff === null ? "-" : formatRupiah(diff)}
+                  </span>
                 </div>
 
                 <button
                   onClick={handleCloseShift}
-                  className="w-full bg-red-500 hover:bg-red-600 text-white text-sm font-medium py-2.5 rounded-lg transition-colors"
+                  disabled={loading}
+                  className="w-full bg-red-500 hover:bg-red-600 text-white text-sm py-2.5 rounded-lg"
                 >
-                  Tutup shift
+                  {loading ? "Memproses..." : "Tutup shift"}
                 </button>
               </div>
             </div>
           )}
         </main>
       </div>
+    </div>
+  );
+}
+
+// 🔹 COMPONENT
+function Card({ label, value, highlight }: any) {
+  return (
+    <div className="bg-white rounded-xl p-4 border border-gray-100">
+      <p className="text-xs text-gray-400 mb-1">{label}</p>
+      <p className={`text-xl font-medium ${highlight ? "text-emerald-600" : "text-gray-900"}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: any) {
+  return (
+    <div className="flex justify-between py-2 text-sm">
+      <span className="text-gray-500">{label}</span>
+      <span className="font-medium text-gray-900">{value}</span>
     </div>
   );
 }

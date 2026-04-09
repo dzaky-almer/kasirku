@@ -16,6 +16,7 @@ interface Shift {
   opened_at: string;
   closed_at?: string;
   notes?: string;
+  cashierName?: string;
   user?: { name?: string; email?: string };
 }
 
@@ -117,22 +118,32 @@ export default function LaporanShiftPage() {
   }
 
   // Derived
-  const allUsers = Array.from(new Set(shifts.map(s => s.user?.name ?? s.user?.email ?? "—")));
+  const allCashiers = Array.from(
+    new Set(shifts.map((s) => (s.cashierName || "—").trim()))
+  );
 
-  const filtered = shifts.filter(s => {
-    const kasir = s.user?.name ?? s.user?.email ?? "—";
-    const matchSearch = kasir.toLowerCase().includes(search.toLowerCase());
-    const matchUser   = selectedUser === "all" || kasir === selectedUser;
-    return matchSearch && matchUser;
+  const filtered = shifts.filter((s) => {
+    const kasir = (s.cashierName || "—").toLowerCase();
+
+    return (
+      kasir.includes(search.toLowerCase()) &&
+      (selectedUser === "all" ||
+        kasir === selectedUser.toLowerCase())
+    );
   });
 
   // Insight otomatis
-  const busiest = shifts.length > 0
-    ? shifts.reduce((a, b) => b.total_transactions > a.total_transactions ? b : a)
-    : null;
-  const bestKasir = shifts.length > 0
-    ? shifts.reduce((a, b) => b.total_sales > a.total_sales ? b : a)
-    : null;
+const busiest = shifts.length > 0
+  ? shifts.reduce((a, b) =>
+      b.total_transactions > a.total_transactions ? b : a
+    )
+  : null;
+
+const bestKasir = shifts.length > 0
+  ? shifts.reduce((a, b) =>
+      b.total_sales > a.total_sales ? b : a
+    )
+  : null;
 
   // Chart data — per shift bar
   const maxSales = Math.max(...shifts.map(s => s.total_sales), 1);
@@ -156,7 +167,7 @@ export default function LaporanShiftPage() {
     const wb = utils.book_new();
     const ws1 = utils.json_to_sheet(filtered.map((s, i) => ({
       No: i + 1,
-      Kasir: s.user?.name ?? s.user?.email ?? "—",
+      Kasir: s.cashierName || "—",
       "Buka": new Date(s.opened_at).toLocaleString("id-ID"),
       "Tutup": s.closed_at ? new Date(s.closed_at).toLocaleString("id-ID") : "-",
       Status: s.status,
@@ -206,14 +217,14 @@ export default function LaporanShiftPage() {
       head: [["No", "Kasir", "Buka", "Tutup", "Trx", "Sales", "Selisih"]],
       body: filtered.map((s, i) => [
         i + 1,
-        s.user?.name ?? s.user?.email ?? "—",
+        s.cashierName || "—",
         new Date(s.opened_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
         s.closed_at ? new Date(s.closed_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-",
         s.total_transactions,
         fmtFull(s.total_sales),
         fmtFull(shiftDiff(s)),
       ]),
-      startY: (doc as any).lastAutoTable?.finalY + 8 ?? 60,
+      startY: (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : 60,
       theme: "grid", headStyles: { fillColor: [146, 64, 14] }, styles: { fontSize: 8 },
     });
     doc.save(`LaporanShift_${dateFrom}_${dateTo}.pdf`);
@@ -282,7 +293,7 @@ export default function LaporanShiftPage() {
           <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)}
             className="px-3 py-1.5 text-xs text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 bg-white">
             <option value="all">Semua Kasir</option>
-            {allUsers.map(u => <option key={u} value={u}>{u}</option>)}
+            {allCashiers.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
 
           {/* Search */}
@@ -358,7 +369,7 @@ export default function LaporanShiftPage() {
                     <div className="flex items-end gap-2 h-32">
                       {shifts.map((s, i) => {
                         const pct = Math.max(Math.round((s.total_sales / maxSales) * 100), s.total_sales > 0 ? 4 : 0);
-                        const kasir = s.user?.name ?? s.user?.email ?? `Shift ${i+1}`;
+                        const kasir = (s.cashierName || "Kasir").trim() || `Shift ${i+1}`;
                         const time  = new Date(s.opened_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
                         return (
                           <div key={s.id} className="flex-1 flex flex-col items-center gap-1 group relative">
@@ -388,12 +399,12 @@ export default function LaporanShiftPage() {
                     <>
                       <div className="p-3 bg-amber-50 rounded-lg">
                         <p className="text-[10px] text-amber-700 font-medium mb-0.5">Shift Paling Ramai</p>
-                        <p className="text-xs text-gray-800 font-medium">{busiest?.user?.name ?? busiest?.user?.email ?? "—"}</p>
+                        <p className="text-xs text-gray-800 font-medium">{busiest?.cashierName ?? "—"}</p>
                         <p className="text-[10px] text-gray-500">{busiest?.total_transactions} transaksi · {new Date(busiest!.opened_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</p>
                       </div>
                       <div className="p-3 bg-emerald-50 rounded-lg">
                         <p className="text-[10px] text-emerald-700 font-medium mb-0.5">Kasir Terbaik</p>
-                        <p className="text-xs text-gray-800 font-medium">{bestKasir?.user?.name ?? bestKasir?.user?.email ?? "—"}</p>
+                        <p className="text-xs text-gray-800 font-medium">{bestKasir?.cashierName ?? "—"}</p>
                         <p className="text-[10px] text-gray-500">{fmt(bestKasir?.total_sales ?? 0)} omzet</p>
                       </div>
                       <div className={`p-3 rounded-lg ${summary.total_diff < -50_000 ? "bg-red-50" : "bg-gray-50"}`}>
@@ -422,7 +433,7 @@ export default function LaporanShiftPage() {
                   <div className="divide-y divide-gray-50">
                     {filtered.map((s) => {
                       const diff    = shiftDiff(s);
-                      const kasir   = s.user?.name ?? s.user?.email ?? "Kasir";
+                      const kasir   = (s.cashierName || "Kasir").trim() || "Kasir";
                       const buka    = new Date(s.opened_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
                       const tutup   = s.closed_at ? new Date(s.closed_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-";
                       const isOpen  = s.status === "OPEN";

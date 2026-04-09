@@ -232,7 +232,7 @@ export default function ShiftsPage() {
               </div>
 
               {/* CLOSE */}
-              <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <div className="bg-white text-black rounded-xl border border-gray-100 p-5">
                 <input
                   type="number"
                   placeholder="Uang akhir"
@@ -246,11 +246,11 @@ export default function ShiftsPage() {
 
                 <textarea
                   placeholder="Catatan..."
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3"
+                  className="w-full text-black bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3"
                   onChange={(e) => setNotes(e.target.value)}
                 />
 
-                <div className="mb-4 text-sm">
+                <div className="mb-4 text-sm text-black">
                   Selisih:{" "}
                   <span
                     className={

@@ -2,44 +2,29 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const date = searchParams.get("date");
-  const storeId = searchParams.get("storeId"); // optional
+  const storeId  = searchParams.get("storeId");
+  const dateFrom = searchParams.get("dateFrom");
+  const dateTo   = searchParams.get("dateTo");
+  const date     = searchParams.get("date"); // backward compat
 
-  if (!date) {
-    return Response.json({ error: "Tanggal wajib diisi" }, { status: 400 });
-  }
+  // Resolve range
+  const from = dateFrom ?? date ?? new Date().toISOString().split("T")[0];
+  const to   = dateTo   ?? date ?? new Date().toISOString().split("T")[0];
 
-  const start = new Date(`${date}T00:00:00.000Z`);
-  const end = new Date(`${date}T23:59:59.999Z`);
+  const start = new Date(`${from}T00:00:00.000Z`);
+  const end   = new Date(`${to}T23:59:59.999Z`);
 
   const shifts = await prisma.shift.findMany({
     where: {
-      opened_at: {
-        gte: start,
-        lte: end,
-      },
+      opened_at: { gte: start, lte: end },
       ...(storeId && { storeId }),
     },
-    include: {
-      user: true, // 🔥 tampilkan kasir
-    },
-    orderBy: {
-      opened_at: "asc",
-    },
+    include: { user: true },
+    orderBy: { opened_at: "asc" },
   });
 
-  // total harian
-  const total_sales = shifts.reduce((a, s) => a + s.total_sales, 0);
-  const total_transactions = shifts.reduce(
-    (a, s) => a + s.total_transactions,
-    0
-  );
+  const total_sales        = shifts.reduce((a, s) => a + s.total_sales, 0);
+  const total_transactions = shifts.reduce((a, s) => a + s.total_transactions, 0);
 
-  return Response.json({
-    shifts,
-    summary: {
-      total_sales,
-      total_transactions,
-    },
-  });
+  return Response.json({ shifts, summary: { total_sales, total_transactions } });
 }

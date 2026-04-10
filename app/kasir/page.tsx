@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Script from "next/script";
@@ -18,12 +18,72 @@ interface CartItem extends Product {
   qty: number;
 }
 
+// ── TIPE PROMO ─────────────────────────────────────────────
+interface Promo {
+  id: string;
+  name: string;
+  type: "PRODUCT" | "HAPPY_HOUR" | "MIN_TRANSACTION";
+  discountType: "PERCENT" | "NOMINAL";
+  discountValue: number;
+  productId?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  minTransaction?: number | null;
+}
+
 function formatRupiah(amount: number): string {
   return "Rp " + amount.toLocaleString("id-ID");
 }
 
 declare global {
   interface Window { snap: any; }
+}
+
+// ── HELPER: validasi & hitung diskon ────────────────────────
+function calcDiscount(
+  promo: Promo,
+  cart: CartItem[],
+  subtotal: number
+): { amount: number; valid: boolean; reason?: string } {
+  // Happy hour — cek jam sekarang
+  if (promo.type === "HAPPY_HOUR") {
+    if (!promo.startTime || !promo.endTime) {
+      return { amount: 0, valid: false, reason: "Konfigurasi happy hour tidak lengkap" };
+    }
+    const now = new Date();
+    const cur = now.getHours() * 60 + now.getMinutes();
+    const [sh, sm] = promo.startTime.split(":").map(Number);
+    const [eh, em] = promo.endTime.split(":").map(Number);
+    if (cur < sh * 60 + sm || cur > eh * 60 + em) {
+      return { amount: 0, valid: false, reason: `Berlaku ${promo.startTime}–${promo.endTime}` };
+    }
+  }
+
+  // Minimum transaksi
+  if (promo.type === "MIN_TRANSACTION") {
+    if (!promo.minTransaction || subtotal < promo.minTransaction) {
+      return {
+        amount: 0, valid: false,
+        reason: `Min. transaksi ${formatRupiah(promo.minTransaction ?? 0)}`,
+      };
+    }
+  }
+
+  // Base yang kena diskon
+  let base = subtotal;
+  if (promo.type === "PRODUCT" && promo.productId) {
+    const target = cart.filter((i) => i.id === promo.productId);
+    if (!target.length) {
+      return { amount: 0, valid: false, reason: "Produk promo tidak ada di keranjang" };
+    }
+    base = target.reduce((s, i) => s + i.price * i.qty, 0);
+  }
+
+  const amount = promo.discountType === "PERCENT"
+    ? Math.round((base * promo.discountValue) / 100)
+    : promo.discountValue;
+
+  return { amount: Math.min(amount, subtotal), valid: true };
 }
 
 export default function KasirPage() {
@@ -51,6 +111,11 @@ export default function KasirPage() {
   const [lastTransaction, setLastTransaction] = useState<any>(null);
   const [shift, setShift] = useState<any>(null);
 
+  // ── STATE PROMO ──────────────────────────────────────────
+  const [promos, setPromos] = useState<Promo[]>([]);
+  const [selectedPromo, setSelectedPromo] = useState<Promo | null>(null);
+  const [showPromoPanel, setShowPromoPanel] = useState(false);
+
   useEffect(() => {
     if (!storeId) return;
     fetch(`/api/products?storeId=${storeId}`)
@@ -59,19 +124,38 @@ export default function KasirPage() {
       .catch(() => console.error("Gagal fetch produk"));
   }, [storeId]);
 
-useEffect(() => {
-  fetch("/api/shifts/current")
-    .then(async (res) => {
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error();
-      setShift(data);
-    })
-    .catch(() => {
-      console.log("Shift belum ada");
-      setShift(null);
-    });
-}, []);
+  useEffect(() => {
+    fetch("/api/shifts/current")
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error();
+        setShift(data);
+      })
+      .catch(() => { setShift(null); });
+  }, []);
 
+  // Fetch promo aktif ketika storeId siap
+  useEffect(() => {
+    if (!storeId) return;
+    fetch(`/api/promos?storeId=${storeId}`)
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setPromos(data); })
+      .catch(() => {});
+  }, [storeId]);
+
+  // ── KALKULASI ────────────────────────────────────────────
+  const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
+  const tax = Math.round(subtotal * 0.1);
+
+  const promoResult = useMemo(() => {
+    if (!selectedPromo) return { amount: 0, valid: false };
+    return calcDiscount(selectedPromo, cart, subtotal + tax); // diskon dari total termasuk pajak
+  }, [selectedPromo, cart, subtotal, tax]);
+
+  const discount = promoResult.valid ? promoResult.amount : 0;
+  const total = Math.max(0, subtotal + tax - discount);
+  const paidNum = parseInt(paid.replace(/\D/g, "")) || 0;
+  const kembalian = paidNum - total;
 
   const filtered = products.filter((p) => {
     const matchCat = activeCategory === "Semua" || p.category === activeCategory;
@@ -96,11 +180,8 @@ useEffect(() => {
   function setQtyDirect(id: string, val: string) {
     const num = parseInt(val);
     if (isNaN(num) || num < 0) return;
-    if (num === 0) {
-      setCart((prev) => prev.filter((c) => c.id !== id));
-    } else {
-      setCart((prev) => prev.map((c) => c.id === id ? { ...c, qty: num } : c));
-    }
+    if (num === 0) setCart((prev) => prev.filter((c) => c.id !== id));
+    else setCart((prev) => prev.map((c) => c.id === id ? { ...c, qty: num } : c));
   }
 
   function removeFromCart(id: string) {
@@ -113,37 +194,38 @@ useEffect(() => {
     setSuccess(false);
     setShowStruk(false);
     setPaymentMethod("cash");
+    setSelectedPromo(null);
+    setShowPromoPanel(false);
   }
 
-  const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const tax = Math.round(subtotal * 0.1);
-  const total = subtotal + tax;
-  const paidNum = parseInt(paid.replace(/\D/g, "")) || 0;
-  const kembalian = paidNum - total;
+  // ── STRUK (ditambah baris diskon) ────────────────────────
+  function printStruk() {
+    const now = new Date();
+    const trxTime = now.toLocaleString("id-ID", {
+      day: "numeric", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit"
+    });
 
- function printStruk() {
-  const now = new Date();
-  const trxTime = now.toLocaleString("id-ID", {
-    day: "numeric", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit"
-  });
+    const itemRows = cart.map((item) =>
+      `<tr>
+        <td style="padding:1px 0">${item.name}</td>
+        <td style="text-align:right;white-space:nowrap">${item.qty} x ${formatRupiah(item.price)}</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="text-align:right;padding-bottom:3px">${formatRupiah(item.price * item.qty)}</td>
+      </tr>`
+    ).join("");
 
-  const itemRows = cart.map((item) =>
-    `<tr>
-      <td style="padding:1px 0">${item.name}</td>
-      <td style="text-align:right;white-space:nowrap">${item.qty} x ${formatRupiah(item.price)}</td>
-    </tr>
-    <tr>
-      <td colspan="2" style="text-align:right;padding-bottom:3px">${formatRupiah(item.price * item.qty)}</td>
-    </tr>`
-  ).join("");
+    const discountRow = discount > 0 && selectedPromo ? `
+      <tr><td>Diskon (${selectedPromo.name})</td><td style="text-align:right">-${formatRupiah(discount)}</td></tr>
+    ` : "";
 
-  const cashRows = paymentMethod === "cash" ? `
-    <tr><td>Tunai</td><td style="text-align:right">${formatRupiah(paidNum)}</td></tr>
-    <tr><td>Kembali</td><td style="text-align:right">${formatRupiah(kembalian)}</td></tr>
-  ` : `<tr><td colspan="2" style="text-align:center">-- Dibayar via QRIS --</td></tr>`;
+    const cashRows = paymentMethod === "cash" ? `
+      <tr><td>Tunai</td><td style="text-align:right">${formatRupiah(paidNum)}</td></tr>
+      <tr><td>Kembali</td><td style="text-align:right">${formatRupiah(kembalian)}</td></tr>
+    ` : `<tr><td colspan="2" style="text-align:center">-- Dibayar via QRIS --</td></tr>`;
 
-  const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Struk</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -180,6 +262,7 @@ useEffect(() => {
   <table>
     <tr><td>Subtotal</td><td style="text-align:right">${formatRupiah(subtotal)}</td></tr>
     <tr><td>PPN 10%</td><td style="text-align:right">${formatRupiah(tax)}</td></tr>
+    ${discountRow}
     <tr class="total-row"><td>TOTAL</td><td style="text-align:right">${formatRupiah(total)}</td></tr>
   </table>
   <div class="divider-dash"></div>
@@ -196,46 +279,42 @@ useEffect(() => {
   </div>
 </body></html>`;
 
-  const win = window.open("", "_blank", "width=400,height=700");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(() => { win.print(); win.close(); }, 300);
-}
+    const win = window.open("", "_blank", "width=400,height=700");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 300);
+  }
 
+  // ── SAVE TRANSACTION (ditambah promoId & discountAmount) ─
   async function saveTransaction(method: "cash" | "qris") {
-  if (!shift?.id) {
-    alert("Shift belum dibuka!");
-    return false;
+    if (!shift?.id) { alert("Shift belum dibuka!"); return false; }
+
+    const res = await fetch("/api/transactions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        storeId,
+        userId,
+        shiftId: shift.id,
+        paymentMethod: method,
+        items: cart.map((item) => ({
+          productId: item.id,
+          qty: item.qty,
+          price: item.price,
+        })),
+        // ── BARU: kirim promo yang dipakai ──
+        promoId: promoResult.valid && selectedPromo ? selectedPromo.id : null,
+        discountAmount: discount,
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) { console.error(data); throw new Error(data?.error || "Gagal menyimpan transaksi"); }
+    setLastTransaction(data);
+    return true;
   }
-
-  const res = await fetch("/api/transactions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      storeId,
-      userId,
-      shiftId: shift.id, 
-      paymentMethod: method,
-      items: cart.map((item) => ({
-        productId: item.id,
-        qty: item.qty,
-        price: item.price,
-      })),
-    }),
-  });
-
-  const data = await res.json().catch(() => null);
-
-  if (!res.ok) {
-    console.error(data);
-    throw new Error(data?.error || "Gagal menyimpan transaksi");
-  }
-
-  setLastTransaction(data);
-  return true;
-}
 
   async function handleBayar() {
     if (cart.length === 0 || !storeId || !userId) return;
@@ -246,13 +325,11 @@ useEffect(() => {
       try {
         await saveTransaction("cash");
         setSuccess(true); setShowStruk(true);
-setTimeout(() => printStruk(), 400);
+        setTimeout(() => printStruk(), 400);
       } catch (err) {
         console.error(err);
         alert("Transaksi gagal disimpan. Coba lagi.");
-      } finally {
-        setLoading(false);
-      }
+      } finally { setLoading(false); }
       return;
     }
 
@@ -269,10 +346,10 @@ setTimeout(() => printStruk(), 400);
 
       window.snap.pay(data.token, {
         onSuccess: async () => {
-  await saveTransaction("qris");
-  setSuccess(true); setShowStruk(true);
-  setTimeout(() => printStruk(), 400);
-},
+          await saveTransaction("qris");
+          setSuccess(true); setShowStruk(true);
+          setTimeout(() => printStruk(), 400);
+        },
         onPending: () => { alert("Pembayaran pending."); },
         onError: () => { alert("Pembayaran gagal. Coba lagi."); },
         onClose: () => {},
@@ -280,9 +357,7 @@ setTimeout(() => printStruk(), 400);
     } catch (err) {
       console.error(err);
       alert("Gagal generate QRIS. Coba lagi.");
-    } finally {
-      setQrisLoading(false);
-    }
+    } finally { setQrisLoading(false); }
   }
 
   const now = new Date();
@@ -365,7 +440,7 @@ setTimeout(() => printStruk(), 400);
           </div>
         </div>
 
-        {/* Cart */}
+        {/* ── CART SIDEBAR ─────────────────────────────────── */}
         <aside className="w-80 bg-white border-l border-gray-100 flex flex-col flex-shrink-0">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-900">Pesanan</span>
@@ -401,16 +476,13 @@ setTimeout(() => printStruk(), 400);
                       <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
                       <p className="text-[10px] text-gray-400">{formatRupiah(item.price)}</p>
                     </div>
-                    {/* Qty control dengan input ketik */}
                     <div className="flex items-center gap-1">
                       <button onClick={() => updateQty(item.id, -1)}
                         className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 text-sm font-medium transition-colors">
                         −
                       </button>
                       <input
-                        type="number"
-                        min="0"
-                        value={item.qty}
+                        type="number" min="0" value={item.qty}
                         onChange={(e) => setQtyDirect(item.id, e.target.value)}
                         className="w-8 h-6 text-center text-xs font-medium text-gray-800 border border-gray-200 rounded outline-none focus:border-amber-400"
                       />
@@ -420,7 +492,6 @@ setTimeout(() => printStruk(), 400);
                       </button>
                     </div>
                     <span className="text-xs font-medium text-gray-700 min-w-[50px] text-right">{formatRupiah(item.price * item.qty)}</span>
-                    {/* Tombol hapus */}
                     <button onClick={() => removeFromCart(item.id)}
                       className="ml-1 p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0">
                       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
@@ -442,6 +513,89 @@ setTimeout(() => printStruk(), 400);
                 <div className="flex justify-between text-xs text-gray-500">
                   <span>Pajak (10%)</span><span>{formatRupiah(tax)}</span>
                 </div>
+
+                {/* ── PROMO SECTION ──────────────────────── */}
+                <div className="pt-2 border-t border-gray-50">
+                  {/* Tombol buka/tutup panel promo */}
+                  <button
+                    onClick={() => setShowPromoPanel((v) => !v)}
+                    className="w-full flex items-center justify-between py-1.5 text-xs text-gray-500 hover:text-amber-700 transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
+                        <path d="M2 8h12M8 2v12" stroke="currentColor" strokeLinecap="round"/>
+                      </svg>
+                      {selectedPromo && promoResult.valid
+                        ? <span className="text-green-600 font-medium">{selectedPromo.name}</span>
+                        : "Pakai promo"}
+                    </span>
+                    {selectedPromo && promoResult.valid && (
+                      <span className="text-green-600 font-medium">-{formatRupiah(discount)}</span>
+                    )}
+                  </button>
+
+                  {/* Panel pilih promo */}
+                  {showPromoPanel && (
+                    <div className="mt-2 space-y-1.5 bg-gray-50 rounded-xl p-2.5">
+                      {promos.length === 0 ? (
+                        <p className="text-[10px] text-gray-400 text-center py-1">Tidak ada promo aktif</p>
+                      ) : (
+                        <>
+                          {/* Tanpa promo */}
+                          <button
+                            onClick={() => { setSelectedPromo(null); setShowPromoPanel(false); }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                              !selectedPromo ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-500 hover:bg-white"
+                            }`}
+                          >
+                            Tanpa promo
+                          </button>
+
+                          {/* List promo */}
+                          {promos.map((promo) => {
+                            const preview = calcDiscount(promo, cart, subtotal + tax);
+                            const discLabel = promo.discountType === "PERCENT"
+                              ? `${promo.discountValue}%`
+                              : formatRupiah(promo.discountValue);
+                            const isSelected = selectedPromo?.id === promo.id;
+
+                            return (
+                              <button
+                                key={promo.id}
+                                onClick={() => { setSelectedPromo(promo); setShowPromoPanel(false); }}
+                                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                                  isSelected
+                                    ? "bg-amber-50 border border-amber-200"
+                                    : "hover:bg-white border border-transparent"
+                                }`}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className={`font-medium ${isSelected ? "text-amber-700" : "text-gray-700"}`}>{promo.name}</p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5">{promoTypeLabel(promo)}</p>
+                                  </div>
+                                  <span className={`font-medium ml-2 flex-shrink-0 ${preview.valid ? "text-green-600" : "text-gray-400 line-through"}`}>
+                                    -{discLabel}
+                                  </span>
+                                </div>
+                                {!preview.valid && (
+                                  <p className="text-[10px] text-red-400 mt-0.5">{preview.reason}</p>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Notif diskon aktif */}
+                  {selectedPromo && !promoResult.valid && (
+                    <p className="text-[10px] text-red-400 mt-1">{promoResult.reason}</p>
+                  )}
+                </div>
+                {/* ── END PROMO SECTION ──────────────────── */}
+
                 <div className="flex justify-between text-sm font-medium text-gray-900 pt-2 border-t border-gray-100">
                   <span>Total</span>
                   <span className="text-amber-700">{formatRupiah(total)}</span>
@@ -482,12 +636,10 @@ setTimeout(() => printStruk(), 400);
           )}
         </aside>
 
-        {/* Modal Sukses + Struk */}
+        {/* ── MODAL SUKSES + STRUK ────────────────────────── */}
         {success && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl w-80 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-
-              {/* Struk */}
               <div ref={strutRef} className="px-6 py-5 border-b border-dashed border-gray-200">
                 <div className="text-center mb-3">
                   <p className="text-sm font-bold text-gray-900">KOPI NUSANTARA</p>
@@ -509,6 +661,13 @@ setTimeout(() => printStruk(), 400);
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Pajak (10%)</span><span>{formatRupiah(tax)}</span>
                   </div>
+                  {/* ── Baris diskon di struk modal ── */}
+                  {discount > 0 && selectedPromo && (
+                    <div className="flex justify-between text-xs text-green-600">
+                      <span>Diskon ({selectedPromo.name})</span>
+                      <span>-{formatRupiah(discount)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm font-bold text-gray-900 pt-1">
                     <span>Total</span><span>{formatRupiah(total)}</span>
                   </div>
@@ -529,7 +688,6 @@ setTimeout(() => printStruk(), 400);
                 <p className="text-center text-[10px] text-gray-400 mt-3">Terima kasih!</p>
               </div>
 
-              {/* Tombol aksi */}
               <div className="px-6 py-4 space-y-2">
                 <button onClick={printStruk}
                   className="w-full py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors">
@@ -550,4 +708,12 @@ setTimeout(() => printStruk(), 400);
       </div>
     </>
   );
+}
+
+// ── Helper label tipe promo ───────────────────────────────
+function promoTypeLabel(promo: Promo): string {
+  if (promo.type === "HAPPY_HOUR") return `Happy hour ${promo.startTime}–${promo.endTime}`;
+  if (promo.type === "MIN_TRANSACTION") return `Min. ${formatRupiah(promo.minTransaction ?? 0)}`;
+  if (promo.type === "PRODUCT" && promo.productId) return "Diskon produk tertentu";
+  return "Semua produk";
 }

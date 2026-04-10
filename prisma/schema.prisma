@@ -12,20 +12,21 @@ model User {
   password     String
   createdAt    DateTime      @default(now())
   stores       Store[]
-  shifts Shift[]
+  shifts       Shift[]
   subscription Subscription?
 }
 
 model Store {
   id           String        @id @default(uuid())
   name         String
-  type         String 
+  type         String
   userId       String
   createdAt    DateTime      @default(now())
   user         User          @relation(fields: [userId], references: [id])
   products     Product[]
-  shifts Shift[]
+  shifts       Shift[]
   transactions Transaction[]
+  promos       Promo[]       // <-- BARU
 }
 
 model Product {
@@ -41,11 +42,11 @@ model Product {
   category         String?
   imageUrl         String?
   label            String?
-  storeId String
-  store   Store @relation(fields: [storeId], references: [id])
+  storeId          String
+  store            Store             @relation(fields: [storeId], references: [id])
   transactionItems TransactionItem[]
+  promos           Promo[]           // <-- BARU
 }
-
 
 model TransactionItem {
   id            String      @id @default(uuid())
@@ -68,35 +69,69 @@ model Subscription {
 }
 
 model Transaction {
-  id            String            @id @default(uuid())
-  storeId       String
-  total         Int
-  paymentMethod String            @default("cash")
-  createdAt     DateTime          @default(now())
-  store         Store             @relation(fields: [storeId], references: [id])
-  items         TransactionItem[]
-  shiftId  String
-  shift    Shift   @relation(fields: [shiftId], references: [id])
+  id             String            @id @default(uuid())
+  storeId        String
+  total          Int
+  discountAmount Int               @default(0) // <-- BARU: jumlah diskon yang dipotong
+  paymentMethod  String            @default("cash")
+  createdAt      DateTime          @default(now())
+  store          Store             @relation(fields: [storeId], references: [id])
+  items          TransactionItem[]
+  shiftId        String
+  shift          Shift             @relation(fields: [shiftId], references: [id])
+  promoId        String?           // <-- BARU: promo yang dipakai (opsional)
+  promo          Promo?            @relation(fields: [promoId], references: [id])
 }
 
 model Shift {
-  id                  String   @id @default(uuid())
-  opening_cash        Float
-  closing_cash        Float?
-  total_sales         Float    @default(0)
-  total_transactions  Int      @default(0)
-  status              String   // OPEN | CLOSED
-  opened_at           DateTime @default(now())
-  closed_at           DateTime?
-  notes               String?
+  id                 String        @id @default(uuid())
+  opening_cash       Float
+  closing_cash       Float?
+  total_sales        Float         @default(0)
+  total_transactions Int           @default(0)
+  status             String        // OPEN | CLOSED
+  opened_at          DateTime      @default(now())
+  closed_at          DateTime?
+  notes              String?
+  userId             String
+  user               User          @relation(fields: [userId], references: [id])
+  cashierName        String        @default("Kasir")
+  storeId            String
+  store              Store         @relation(fields: [storeId], references: [id])
+  transactions       Transaction[]
+}
 
-  userId              String
-  user                User @relation(fields: [userId], references: [id])
+// ============================================================
+// MODEL BARU: Promo
+// ============================================================
+model Promo {
+  id             String    @id @default(uuid())
+  storeId        String
+  name           String
+  // Tipe promo: PRODUCT | HAPPY_HOUR | MIN_TRANSACTION
+  type           String
+  // Tipe diskon: PERCENT | NOMINAL
+  discountType   String
+  // Nilai diskon: 10 = 10% (jika PERCENT) atau 10000 = Rp10.000 (jika NOMINAL)
+  discountValue  Int
 
-  cashierName String @default("Kasir")
+  // Untuk tipe PRODUCT — kosong = berlaku semua produk di toko
+  productId      String?
 
-  storeId             String
-  store               Store @relation(fields: [storeId], references: [id])
+  // Untuk tipe HAPPY_HOUR — format "HH:mm"
+  startTime      String?   // contoh: "14:00"
+  endTime        String?   // contoh: "17:00"
 
-  transactions        Transaction[]
+  // Untuk tipe MIN_TRANSACTION
+  minTransaction Int?      // contoh: 100000 = minimum belanja Rp100.000
+
+  // Masa berlaku
+  startDate      DateTime?
+  endDate        DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+
+  store        Store         @relation(fields: [storeId], references: [id])
+  product      Product?      @relation(fields: [productId], references: [id])
+  transactions Transaction[]
 }

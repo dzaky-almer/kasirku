@@ -1,9 +1,10 @@
+// app/api/transactions/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { storeId, userId, items: cartItems, paymentMethod, shiftId } = body;
+  const { storeId, userId, items: cartItems, paymentMethod, shiftId, promoId, discountAmount } = body;
 
   if (!shiftId) {
     return NextResponse.json({ error: "Shift belum dibuka" }, { status: 400 });
@@ -16,19 +17,25 @@ export async function POST(req: Request) {
     );
   }
 
-  const total = cartItems.reduce(
-    (sum: number, item: { price: number; qty: number }) =>
-      sum + item.price * item.qty,
+  const subtotal = cartItems.reduce(
+    (sum: number, item: { price: number; qty: number }) => sum + item.price * item.qty,
     0
   );
+
+  // Total sudah dikurangi diskon (frontend sudah hitung, kita validasi ulang)
+  const discount = typeof discountAmount === "number" ? discountAmount : 0;
+  const total = Math.max(0, subtotal - discount);
 
   try {
     const transaction = await prisma.transaction.create({
       data: {
         storeId,
         total,
+        discountAmount: discount,
         shiftId,
         paymentMethod: paymentMethod ?? "cash",
+        // Hubungkan ke promo jika ada
+        ...(promoId ? { promoId } : {}),
         items: {
           create: cartItems.map((item: {
             productId: string;
@@ -69,7 +76,6 @@ export async function POST(req: Request) {
   }
 }
 
-// ← INI YANG HILANG dari kode terbaru kamu
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const storeId = searchParams.get("storeId");
@@ -89,7 +95,10 @@ export async function GET(req: Request) {
         },
       }),
     },
-    include: { items: true },
+    include: {
+      items: true,
+      promo: { select: { id: true, name: true, discountType: true, discountValue: true } },
+    },
     orderBy: { createdAt: "desc" },
   });
 

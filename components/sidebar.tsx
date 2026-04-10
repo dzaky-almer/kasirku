@@ -64,6 +64,15 @@ const navItems = [
         <path d="M2 13V6l3-3 3 3 3-2 3 2v7M2 13h12" stroke="currentColor" />
       </>
     )
+  },
+    {
+    label: "promo",
+    href: "/promo",
+    icon: (
+      <>
+        <path d="M2 13V6l3-3 3 3 3-2 3 2v7M2 13h12" stroke="currentColor" />
+      </>
+    )
   }
 ];
 

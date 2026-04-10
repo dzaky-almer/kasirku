@@ -95,7 +95,6 @@ export default function LaporanShiftPage() {
       const rawShifts: Shift[] = data.shifts ?? [];
       setShifts(rawShifts);
 
-      // Hitung summary di frontend dari data shifts
       const total_sales        = rawShifts.reduce((a, s) => a + s.total_sales, 0);
       const total_transactions = rawShifts.reduce((a, s) => a + s.total_transactions, 0);
       const total_cash_in      = rawShifts.reduce((a, s) => a + (s.closing_cash ?? 0), 0);
@@ -124,29 +123,36 @@ export default function LaporanShiftPage() {
 
   const filtered = shifts.filter((s) => {
     const kasir = (s.cashierName || "—").toLowerCase();
-
     return (
       kasir.includes(search.toLowerCase()) &&
-      (selectedUser === "all" ||
-        kasir === selectedUser.toLowerCase())
+      (selectedUser === "all" || kasir === selectedUser.toLowerCase())
     );
   });
 
-  // Insight otomatis
-const busiest = shifts.length > 0
-  ? shifts.reduce((a, b) =>
-      b.total_transactions > a.total_transactions ? b : a
-    )
-  : null;
+  // Summary dihitung dari filtered — ikut filter kasir & search
+  const filteredSummary = {
+    total_sales:        filtered.reduce((a, s) => a + s.total_sales, 0),
+    total_transactions: filtered.reduce((a, s) => a + s.total_transactions, 0),
+    total_cash_in:      filtered.reduce((a, s) => a + (s.closing_cash ?? 0), 0),
+    total_diff:         filtered.reduce((a, s) => a + shiftDiff(s), 0),
+    get avg_transaction() {
+      return this.total_transactions > 0
+        ? Math.round(this.total_sales / this.total_transactions)
+        : 0;
+    },
+  };
 
-const bestKasir = shifts.length > 0
-  ? shifts.reduce((a, b) =>
-      b.total_sales > a.total_sales ? b : a
-    )
-  : null;
+  // Insight otomatis — ikut filtered
+  const busiest = filtered.length > 0
+    ? filtered.reduce((a, b) => b.total_transactions > a.total_transactions ? b : a)
+    : null;
 
-  // Chart data — per shift bar
-  const maxSales = Math.max(...shifts.map(s => s.total_sales), 1);
+  const bestKasir = filtered.length > 0
+    ? filtered.reduce((a, b) => b.total_sales > a.total_sales ? b : a)
+    : null;
+
+  // Chart — ikut filtered
+  const maxSales = Math.max(...filtered.map(s => s.total_sales), 1);
 
   function shiftDiff(s: Shift) {
     return (s.closing_cash ?? 0) - (s.opening_cash + s.total_sales);
@@ -178,16 +184,14 @@ const bestKasir = shifts.length > 0
       Selisih: shiftDiff(s),
     })));
     utils.book_append_sheet(wb, ws1, "Shift");
-    if (summary) {
-      const ws2 = utils.json_to_sheet([
-        { Metrik: "Total Omzet", Nilai: summary.total_sales },
-        { Metrik: "Total Transaksi", Nilai: summary.total_transactions },
-        { Metrik: "Rata-rata Transaksi", Nilai: summary.avg_transaction },
-        { Metrik: "Total Cash Masuk", Nilai: summary.total_cash_in },
-        { Metrik: "Total Selisih", Nilai: summary.total_diff },
-      ]);
-      utils.book_append_sheet(wb, ws2, "Summary");
-    }
+    const ws2 = utils.json_to_sheet([
+      { Metrik: "Total Omzet",         Nilai: filteredSummary.total_sales },
+      { Metrik: "Total Transaksi",     Nilai: filteredSummary.total_transactions },
+      { Metrik: "Rata-rata Transaksi", Nilai: filteredSummary.avg_transaction },
+      { Metrik: "Total Cash Masuk",    Nilai: filteredSummary.total_cash_in },
+      { Metrik: "Total Selisih",       Nilai: filteredSummary.total_diff },
+    ]);
+    utils.book_append_sheet(wb, ws2, "Summary");
     writeFile(wb, `LaporanShift_${dateFrom}_${dateTo}.xlsx`);
   }
 
@@ -199,20 +203,18 @@ const bestKasir = shifts.length > 0
     doc.text("Laporan Shift Kasir", 14, 15);
     doc.setFontSize(9);
     doc.text(`Periode: ${periode}`, 14, 22);
-    if (summary) {
-      autoTable(doc, {
-        head: [["Metrik", "Nilai"]],
-        body: [
-          ["Total Omzet", fmtFull(summary.total_sales)],
-          ["Total Transaksi", String(summary.total_transactions)],
-          ["Rata-rata Transaksi", fmtFull(summary.avg_transaction)],
-          ["Total Cash Masuk", fmtFull(summary.total_cash_in)],
-          ["Total Selisih", fmtFull(summary.total_diff)],
-        ],
-        startY: 27, theme: "grid",
-        headStyles: { fillColor: [146, 64, 14] }, styles: { fontSize: 9 }, tableWidth: 90,
-      });
-    }
+    autoTable(doc, {
+      head: [["Metrik", "Nilai"]],
+      body: [
+        ["Total Omzet",         fmtFull(filteredSummary.total_sales)],
+        ["Total Transaksi",     String(filteredSummary.total_transactions)],
+        ["Rata-rata Transaksi", fmtFull(filteredSummary.avg_transaction)],
+        ["Total Cash Masuk",    fmtFull(filteredSummary.total_cash_in)],
+        ["Total Selisih",       fmtFull(filteredSummary.total_diff)],
+      ],
+      startY: 27, theme: "grid",
+      headStyles: { fillColor: [146, 64, 14] }, styles: { fontSize: 9 }, tableWidth: 90,
+    });
     autoTable(doc, {
       head: [["No", "Kasir", "Buka", "Tutup", "Trx", "Sales", "Selisih"]],
       body: filtered.map((s, i) => [
@@ -231,10 +233,10 @@ const bestKasir = shifts.length > 0
   }
 
   const MODES: { key: Mode; label: string }[] = [
-    { key: "harian", label: "Harian" },
+    { key: "harian",   label: "Harian" },
     { key: "mingguan", label: "Mingguan" },
-    { key: "bulanan", label: "Bulanan" },
-    { key: "custom", label: "Custom" },
+    { key: "bulanan",  label: "Bulanan" },
+    { key: "custom",   label: "Custom" },
   ];
 
   return (
@@ -335,18 +337,18 @@ const bestKasir = shifts.length > 0
 
           {!loading && summary && (
             <>
-              {/* METRIC CARDS */}
+              {/* METRIC CARDS — pakai filteredSummary */}
               <div className="grid grid-cols-5 gap-3">
                 {[
-                  { label: "Total omzet", value: fmt(summary.total_sales), sub: "periode ini" },
-                  { label: "Total transaksi", value: summary.total_transactions, sub: "transaksi" },
-                  { label: "Rata-rata transaksi", value: fmt(summary.avg_transaction), sub: "per transaksi" },
-                  { label: "Total cash masuk", value: fmt(summary.total_cash_in), sub: "closing cash" },
+                  { label: "Total omzet",        value: fmt(filteredSummary.total_sales),     sub: "periode ini" },
+                  { label: "Total transaksi",     value: filteredSummary.total_transactions,   sub: "transaksi" },
+                  { label: "Rata-rata transaksi", value: fmt(filteredSummary.avg_transaction), sub: "per transaksi" },
+                  { label: "Total cash masuk",    value: fmt(filteredSummary.total_cash_in),   sub: "closing cash" },
                   {
                     label: "Total selisih",
-                    value: (summary.total_diff >= 0 ? "+" : "") + fmt(summary.total_diff),
+                    value: (filteredSummary.total_diff >= 0 ? "+" : "") + fmt(filteredSummary.total_diff),
                     sub: "semua shift",
-                    accent: summary.total_diff < 0 ? "text-red-500" : "text-emerald-600",
+                    accent: filteredSummary.total_diff < 0 ? "text-red-500" : "text-emerald-600",
                   },
                 ].map(c => (
                   <div key={c.label} className="bg-white rounded-xl p-4 border border-gray-100">
@@ -360,16 +362,16 @@ const bestKasir = shifts.length > 0
               {/* INSIGHT + CHART */}
               <div className="grid grid-cols-3 gap-3">
 
-                {/* Chart per shift */}
+                {/* Chart — pakai filtered */}
                 <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
                   <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">PENJUALAN PER SHIFT</p>
-                  {shifts.length === 0 ? (
+                  {filtered.length === 0 ? (
                     <p className="text-xs text-gray-400 py-8 text-center">Tidak ada data.</p>
                   ) : (
                     <div className="flex items-end gap-2 h-32">
-                      {shifts.map((s, i) => {
-                        const pct = Math.max(Math.round((s.total_sales / maxSales) * 100), s.total_sales > 0 ? 4 : 0);
-                        const kasir = (s.cashierName || "Kasir").trim() || `Shift ${i+1}`;
+                      {filtered.map((s, i) => {
+                        const pct   = Math.max(Math.round((s.total_sales / maxSales) * 100), s.total_sales > 0 ? 4 : 0);
+                        const kasir = (s.cashierName || "Kasir").trim() || `Shift ${i + 1}`;
                         const time  = new Date(s.opened_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
                         return (
                           <div key={s.id} className="flex-1 flex flex-col items-center gap-1 group relative">
@@ -390,29 +392,31 @@ const bestKasir = shifts.length > 0
                   )}
                 </div>
 
-                {/* Insight otomatis */}
+                {/* Insight — pakai filtered */}
                 <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
                   <p className="text-xs font-medium text-gray-400 tracking-wider">INSIGHT OTOMATIS</p>
-                  {shifts.length === 0 ? (
+                  {filtered.length === 0 ? (
                     <p className="text-xs text-gray-400">Belum ada data.</p>
                   ) : (
                     <>
                       <div className="p-3 bg-amber-50 rounded-lg">
                         <p className="text-[10px] text-amber-700 font-medium mb-0.5">Shift Paling Ramai</p>
                         <p className="text-xs text-gray-800 font-medium">{busiest?.cashierName ?? "—"}</p>
-                        <p className="text-[10px] text-gray-500">{busiest?.total_transactions} transaksi · {new Date(busiest!.opened_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</p>
+                        <p className="text-[10px] text-gray-500">
+                          {busiest?.total_transactions} transaksi · {new Date(busiest!.opened_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                        </p>
                       </div>
                       <div className="p-3 bg-emerald-50 rounded-lg">
                         <p className="text-[10px] text-emerald-700 font-medium mb-0.5">Kasir Terbaik</p>
                         <p className="text-xs text-gray-800 font-medium">{bestKasir?.cashierName ?? "—"}</p>
                         <p className="text-[10px] text-gray-500">{fmt(bestKasir?.total_sales ?? 0)} omzet</p>
                       </div>
-                      <div className={`p-3 rounded-lg ${summary.total_diff < -50_000 ? "bg-red-50" : "bg-gray-50"}`}>
-                        <p className={`text-[10px] font-medium mb-0.5 ${summary.total_diff < -50_000 ? "text-red-600" : "text-gray-500"}`}>
-                          {summary.total_diff < -50_000 ? "⚠ Selisih Besar" : "Selisih Kas"}
+                      <div className={`p-3 rounded-lg ${filteredSummary.total_diff < -50_000 ? "bg-red-50" : "bg-gray-50"}`}>
+                        <p className={`text-[10px] font-medium mb-0.5 ${filteredSummary.total_diff < -50_000 ? "text-red-600" : "text-gray-500"}`}>
+                          {filteredSummary.total_diff < -50_000 ? "⚠ Selisih Besar" : "Selisih Kas"}
                         </p>
-                        <p className={`text-xs font-medium ${summary.total_diff < 0 ? "text-red-500" : "text-emerald-600"}`}>
-                          {summary.total_diff >= 0 ? "+" : ""}{fmtFull(summary.total_diff)}
+                        <p className={`text-xs font-medium ${filteredSummary.total_diff < 0 ? "text-red-500" : "text-emerald-600"}`}>
+                          {filteredSummary.total_diff >= 0 ? "+" : ""}{fmtFull(filteredSummary.total_diff)}
                         </p>
                         <p className="text-[10px] text-gray-400">total semua shift</p>
                       </div>
@@ -490,11 +494,11 @@ const bestKasir = shifts.length > 0
                                 <div className="space-y-2">
                                   <p className="text-[10px] font-medium text-gray-400 tracking-wider">INFO KAS</p>
                                   {[
-                                    ["Opening Cash", fmtFull(s.opening_cash)],
-                                    ["Total Sales", fmtFull(s.total_sales)],
+                                    ["Opening Cash",  fmtFull(s.opening_cash)],
+                                    ["Total Sales",   fmtFull(s.total_sales)],
                                     ["Expected Cash", fmtFull(s.opening_cash + s.total_sales)],
-                                    ["Closing Cash", s.closing_cash != null ? fmtFull(s.closing_cash) : "—"],
-                                    ["Selisih", (diff >= 0 ? "+" : "") + fmtFull(diff)],
+                                    ["Closing Cash",  s.closing_cash != null ? fmtFull(s.closing_cash) : "—"],
+                                    ["Selisih",       (diff >= 0 ? "+" : "") + fmtFull(diff)],
                                   ].map(([label, val]) => (
                                     <div key={label} className="flex justify-between">
                                       <span className="text-xs text-gray-500">{label}</span>
@@ -505,10 +509,10 @@ const bestKasir = shifts.length > 0
                                 <div className="space-y-2">
                                   <p className="text-[10px] font-medium text-gray-400 tracking-wider">INFO SHIFT</p>
                                   {[
-                                    ["Status", isOpen ? "Aktif" : "Selesai"],
-                                    ["Kasir", kasir],
-                                    ["Dibuka", buka],
-                                    ["Ditutup", tutup],
+                                    ["Status",          isOpen ? "Aktif" : "Selesai"],
+                                    ["Kasir",           kasir],
+                                    ["Dibuka",          buka],
+                                    ["Ditutup",         tutup],
                                     ["Total Transaksi", String(s.total_transactions)],
                                   ].map(([label, val]) => (
                                     <div key={label} className="flex justify-between">

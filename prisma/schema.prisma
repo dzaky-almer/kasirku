@@ -26,7 +26,7 @@ model Store {
   products     Product[]
   shifts       Shift[]
   transactions Transaction[]
-  promos       Promo[]       // <-- BARU
+  promos       Promo[]       // Relasi ke tabel Promo
 }
 
 model Product {
@@ -45,7 +45,7 @@ model Product {
   storeId          String
   store            Store             @relation(fields: [storeId], references: [id])
   transactionItems TransactionItem[]
-  promos           Promo[]           // <-- BARU
+  promos           Promo[]           // Relasi ke Promo (khusus tipe PRODUCT)
 }
 
 model TransactionItem {
@@ -72,14 +72,14 @@ model Transaction {
   id             String            @id @default(uuid())
   storeId        String
   total          Int
-  discountAmount Int               @default(0) // <-- BARU: jumlah diskon yang dipotong
+  discountAmount Int               @default(0) // Jumlah diskon yang dipotong
   paymentMethod  String            @default("cash")
   createdAt      DateTime          @default(now())
   store          Store             @relation(fields: [storeId], references: [id])
   items          TransactionItem[]
   shiftId        String
   shift          Shift             @relation(fields: [shiftId], references: [id])
-  promoId        String?           // <-- BARU: promo yang dipakai (opsional)
+  promoId        String?           // Promo yang dipakai (opsional)
   promo          Promo?            @relation(fields: [promoId], references: [id])
 }
 

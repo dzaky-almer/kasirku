@@ -1,11 +1,19 @@
-// app/api/transactions/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { storeId, userId, items: cartItems, paymentMethod, shiftId, promoId, discountAmount } = body;
+  const {
+    storeId,
+    userId,
+    items: cartItems,
+    paymentMethod,
+    shiftId,
+    promoId,
+    discountAmount
+  } = body;
 
+  // VALIDASI BASIC
   if (!shiftId) {
     return NextResponse.json({ error: "Shift belum dibuka" }, { status: 400 });
   }
@@ -18,60 +26,77 @@ export async function POST(req: Request) {
   }
 
   const subtotal = cartItems.reduce(
-    (sum: number, item: { price: number; qty: number }) => sum + item.price * item.qty,
+    (sum: number, item: { price: number; qty: number }) =>
+      sum + item.price * item.qty,
     0
   );
 
-  // Total sudah dikurangi diskon (frontend sudah hitung, kita validasi ulang)
   const discount = typeof discountAmount === "number" ? discountAmount : 0;
   const total = Math.max(0, subtotal - discount);
 
   try {
-    const transaction = await prisma.transaction.create({
-      data: {
-        storeId,
-        total,
-        discountAmount: discount,
-        shiftId,
-        paymentMethod: paymentMethod ?? "cash",
-        // Hubungkan ke promo jika ada
-        ...(promoId ? { promoId } : {}),
-        items: {
-          create: cartItems.map((item: {
-            productId: string;
-            qty: number;
-            price: number;
-          }) => ({
-            productId: item.productId,
-            qty: item.qty,
-            price: item.price,
-          })),
+    const result = await prisma.$transaction(async (tx) => {
+
+      // 🔥 1. VALIDASI & KURANGI STOK (ANTI MINUS)
+      for (const item of cartItems) {
+        const res = await tx.product.updateMany({
+          where: {
+            id: item.productId,
+            stock: { gte: item.qty }, // pastikan stok cukup
+          },
+          data: {
+            stock: { decrement: item.qty },
+          },
+        });
+
+        // kalau gagal update = stok tidak cukup
+        if (res.count === 0) {
+          throw new Error(`Stok produk tidak cukup / sudah habis`);
+        }
+      }
+
+      // 🔥 2. BUAT TRANSAKSI
+      const transaction = await tx.transaction.create({
+        data: {
+          storeId,
+          total,
+          discountAmount: discount,
+          shiftId,
+          paymentMethod: paymentMethod ?? "cash",
+          ...(promoId ? { promoId } : {}),
+          items: {
+            create: cartItems.map((item: any) => ({
+              productId: item.productId,
+              qty: item.qty,
+              price: item.price,
+            })),
+          },
         },
-      },
-      include: { items: true },
-    });
-
-    await prisma.shift.update({
-      where: { id: shiftId },
-      data: {
-        total_sales: { increment: total },
-        total_transactions: { increment: 1 },
-      },
-    });
-
-    for (const item of cartItems) {
-      await prisma.product.update({
-        where: { id: item.productId },
-        data: { stock: { decrement: item.qty } },
+        include: { items: true },
       });
-    }
 
-    return NextResponse.json(transaction, { status: 201 });
-  } catch (error) {
+      // 🔥 3. UPDATE SHIFT
+      await tx.shift.update({
+        where: { id: shiftId },
+        data: {
+          total_sales: { increment: total },
+          total_transactions: { increment: 1 },
+        },
+      });
+
+      return transaction;
+    });
+
+    return NextResponse.json(result, { status: 201 });
+
+  } catch (error: any) {
     console.error("Transaction error:", error);
+
     return NextResponse.json(
-      { error: "Internal server error", detail: String(error) },
-      { status: 500 }
+      {
+        error: error.message || "Transaksi gagal",
+      },
+      { status: 400 }
     );
   }
 }
@@ -97,7 +122,14 @@ export async function GET(req: Request) {
     },
     include: {
       items: true,
-      promo: { select: { id: true, name: true, discountType: true, discountValue: true } },
+      promo: {
+        select: {
+          id: true,
+          name: true,
+          discountType: true,
+          discountValue: true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });

@@ -140,7 +140,7 @@ export default function KasirPage() {
     fetch(`/api/promos?storeId=${storeId}`)
       .then((r) => r.json())
       .then((data) => { if (Array.isArray(data)) setPromos(data); })
-      .catch(() => {});
+      .catch(() => { });
   }, [storeId]);
 
   // ── KALKULASI ────────────────────────────────────────────
@@ -289,7 +289,10 @@ export default function KasirPage() {
 
   // ── SAVE TRANSACTION (ditambah promoId & discountAmount) ─
   async function saveTransaction(method: "cash" | "qris") {
-    if (!shift?.id) { alert("Shift belum dibuka!"); return false; }
+    if (!shift?.id) {
+      alert("Shift belum dibuka!");
+      return false;
+    }
 
     const res = await fetch("/api/transactions", {
       method: "POST",
@@ -304,35 +307,46 @@ export default function KasirPage() {
           qty: item.qty,
           price: item.price,
         })),
-        // ── BARU: kirim promo yang dipakai ──
         promoId: promoResult.valid && selectedPromo ? selectedPromo.id : null,
         discountAmount: discount,
       }),
     });
 
     const data = await res.json().catch(() => null);
-    if (!res.ok) { console.error(data); throw new Error(data?.error || "Gagal menyimpan transaksi"); }
+
+    // 🔥 HANDLE ERROR TANPA THROW
+    if (!res.ok) {
+      alert(data?.error || "Stok tidak cukup / produk habis");
+      return false;
+    }
+
     setLastTransaction(data);
     return true;
   }
-
   async function handleBayar() {
     if (cart.length === 0 || !storeId || !userId) return;
 
     if (paymentMethod === "cash") {
       if (paidNum < total) return;
+
       setLoading(true);
-      try {
-        await saveTransaction("cash");
-        setSuccess(true); setShowStruk(true);
-        setTimeout(() => printStruk(), 400);
-      } catch (err) {
-        console.error(err);
-        alert("Transaksi gagal disimpan. Coba lagi.");
-      } finally { setLoading(false); }
+
+      const successSave = await saveTransaction("cash");
+
+      // 🔥 STOP kalau gagal (stok habis dll)
+      if (!successSave) {
+        setLoading(false);
+        return;
+      }
+
+      // lanjut kalau sukses
+      setSuccess(true);
+      setShowStruk(true);
+      setTimeout(() => printStruk(), 400);
+
+      setLoading(false);
       return;
     }
-
     setQrisLoading(true);
     try {
       const orderId = `TRX-${Date.now()}`;
@@ -346,13 +360,29 @@ export default function KasirPage() {
 
       window.snap.pay(data.token, {
         onSuccess: async () => {
-          await saveTransaction("qris");
-          setSuccess(true); setShowStruk(true);
+          const successSave = await saveTransaction("qris");
+
+          if (!successSave) {
+            setQrisLoading(false);
+            return;
+          }
+
+          setSuccess(true);
+          setShowStruk(true);
           setTimeout(() => printStruk(), 400);
+          setQrisLoading(false);
         },
-        onPending: () => { alert("Pembayaran pending."); },
-        onError: () => { alert("Pembayaran gagal. Coba lagi."); },
-        onClose: () => {},
+        onPending: () => {
+          alert("Pembayaran pending.");
+          setQrisLoading(false);
+        },
+        onError: () => {
+          alert("Pembayaran gagal. Coba lagi.");
+          setQrisLoading(false);
+        },
+        onClose: () => {
+          setQrisLoading(false);
+        },
       });
     } catch (err) {
       console.error(err);
@@ -523,7 +553,7 @@ export default function KasirPage() {
                   >
                     <span className="flex items-center gap-1.5">
                       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
-                        <path d="M2 8h12M8 2v12" stroke="currentColor" strokeLinecap="round"/>
+                        <path d="M2 8h12M8 2v12" stroke="currentColor" strokeLinecap="round" />
                       </svg>
                       {selectedPromo && promoResult.valid
                         ? <span className="text-green-600 font-medium">{selectedPromo.name}</span>
@@ -544,9 +574,8 @@ export default function KasirPage() {
                           {/* Tanpa promo */}
                           <button
                             onClick={() => { setSelectedPromo(null); setShowPromoPanel(false); }}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
-                              !selectedPromo ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-500 hover:bg-white"
-                            }`}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${!selectedPromo ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-500 hover:bg-white"
+                              }`}
                           >
                             Tanpa promo
                           </button>
@@ -563,11 +592,10 @@ export default function KasirPage() {
                               <button
                                 key={promo.id}
                                 onClick={() => { setSelectedPromo(promo); setShowPromoPanel(false); }}
-                                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors ${
-                                  isSelected
-                                    ? "bg-amber-50 border border-amber-200"
-                                    : "hover:bg-white border border-transparent"
-                                }`}
+                                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors ${isSelected
+                                  ? "bg-amber-50 border border-amber-200"
+                                  : "hover:bg-white border border-transparent"
+                                  }`}
                               >
                                 <div className="flex justify-between items-start">
                                   <div>

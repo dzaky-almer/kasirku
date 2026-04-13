@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { name, price, stock, storeId, barcode, sku, costPrice, minStock, unit, category, imageUrl } = body;
+  const { name, price, stock, storeId, barcode, sku, costPrice, minStock, unit, category, imageUrl, label } = body;
 
   if (!name || !price || !storeId) {
     return NextResponse.json(

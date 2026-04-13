@@ -68,10 +68,12 @@ export default function ProdukPage() {
   const [bulkPrice, setBulkPrice]   = useState("");
 
   // Barcode scan
-  const [scanMode, setScanMode]   = useState(false);
+  const [scanMode, setScanMode]         = useState(false);
+  const [devices, setDevices]           = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const videoRef    = useRef<HTMLVideoElement>(null);
   const streamRef   = useRef<MediaStream | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // ← BARU
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Categories
   const [customCategories, setCustomCategories] = useState<string[]>(["Kopi","Non-Kopi","Makanan","Minuman"]);
@@ -87,19 +89,30 @@ export default function ProdukPage() {
       .catch(() => showToast("Gagal memuat produk", "err"));
   }, [storeId]);
 
+  // ── Fetch daftar kamera saat halaman load ─────────────────────
+  useEffect(() => {
+    navigator.mediaDevices.enumerateDevices().then(devs => {
+      const videoDevs = devs.filter(d => d.kind === "videoinput");
+      setDevices(videoDevs);
+      // Default pilih kamera terakhir (biasanya DroidCam/external)
+      if (videoDevs.length > 0) {
+        setSelectedDeviceId(videoDevs[videoDevs.length - 1].deviceId);
+      }
+    }).catch(() => {
+      // Label kamera mungkin kosong sebelum izin diberikan — akan diisi ulang setelah startScan
+    });
+  }, []);
+
   // ── Cleanup kamera saat komponen unmount ──────────────────────
   useEffect(() => {
     return () => {
-      // Hentikan interval / ZXing reader
       const iv = intervalRef.current as any;
       if (iv?._zxing) {
-        iv._zxing.reset();
+        try { iv._zxing.reset(); } catch {}
       } else if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
       intervalRef.current = null;
-
-      // Hentikan stream kamera
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     };
@@ -232,92 +245,103 @@ export default function ProdukPage() {
 
   // ── Barcode scan ─────────────────────────────────────────────
 
-  /**
-   * Hentikan scan: bersihkan interval/ZXing, matikan kamera.
-   */
   function stopScan() {
     const iv = intervalRef.current as any;
     if (iv?._zxing) {
-      // ZXing reader — panggil reset()
       try { iv._zxing.reset(); } catch {}
     } else if (intervalRef.current) {
-      // Native BarcodeDetector interval
       clearInterval(intervalRef.current);
     }
     intervalRef.current = null;
-
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     setScanMode(false);
   }
 
-  /**
-   * Mulai scan: coba native BarcodeDetector dulu,
-   * kalau tidak ada (Firefox/Safari) fallback ke ZXing.
-   */
-  async function startScan() {
-    setScanMode(true);
+async function startScan() {
+  setScanMode(true);
 
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    } catch {
-      showToast("Gagal akses kamera", "err");
-      setScanMode(false);
-      return;
-    }
+  let stream: MediaStream;
+  try {
+    const videoConstraints = selectedDeviceId
+      ? { deviceId: { exact: selectedDeviceId } }
+      : { facingMode: "environment" };
 
-    streamRef.current = stream;
-    if (videoRef.current) videoRef.current.srcObject = stream;
+    stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+  } catch {
+    showToast("Gagal akses kamera", "err");
+    setScanMode(false);
+    return;
+  }
 
-    const BD = (window as any).BarcodeDetector;
+  navigator.mediaDevices.enumerateDevices().then(devs => {
+    const videoDevs = devs.filter(d => d.kind === "videoinput");
+    setDevices(videoDevs);
+  });
 
-    if (BD) {
-      // ── Path A: Native BarcodeDetector (Chrome 83+, Edge) ────
-      const detector = new BD({ formats: ["ean_13", "ean_8", "code_128", "qr_code"] });
+  streamRef.current = stream;
 
-      intervalRef.current = setInterval(async () => {
-        if (!videoRef.current) return;
-        try {
-          const codes = await detector.detect(videoRef.current);
-          if (codes.length > 0) {
-            const barcodeVal = codes[0].rawValue;
-            stopScan();
-            handleBarcodeResult(barcodeVal);
-          }
-        } catch {}
-      }, 300);
+  if (videoRef.current) {
+    videoRef.current.srcObject = stream;
 
-    } else {
-      // ── Path B: ZXing fallback (Firefox, Safari) ─────────────
+    // ✅ Tunggu video benar-benar siap dulu baru mulai detect
+    await new Promise<void>(resolve => {
+      videoRef.current!.onloadedmetadata = () => {
+        videoRef.current!.play().then(resolve).catch(resolve);
+      };
+    });
+  }
+
+  const BD = (window as any).BarcodeDetector;
+
+  if (BD) {
+    const supported = await BD.getSupportedFormats();
+    console.log("Format didukung browser:", supported); // lihat di F12
+
+    const detector = new BD({ formats: supported }); // ✅ pakai semua format yang didukung
+
+    intervalRef.current = setInterval(async () => {
+      if (!videoRef.current || videoRef.current.readyState < 2) return;
       try {
-        const { BrowserMultiFormatReader } = await import("@zxing/library");
-        const codeReader = new BrowserMultiFormatReader();
-
-        // Simpan reader di intervalRef supaya stopScan bisa reset-nya
-        intervalRef.current = { _zxing: codeReader } as any;
-
-        await codeReader.decodeFromVideoElement(
-          videoRef.current!,
-          (result, err) => {
-            if (result) {
-              const barcodeVal = result.getText();
-              stopScan();
-              handleBarcodeResult(barcodeVal);
-            }
-            // err bisa null (frame belum ada barcode) — abaikan saja
-          }
-        );
-      } catch {
-        showToast("Browser tidak support scan barcode", "err");
-        stopScan();
+        const codes = await detector.detect(videoRef.current);
+        if (codes.length > 0) {
+          const barcodeVal = codes[0].rawValue;
+          console.log("Berhasil scan:", barcodeVal);
+          stopScan();
+          handleBarcodeResult(barcodeVal);
+        }
+      } catch (err) {
+        console.log("Error detect:", err);
       }
+    }, 200); // ✅ lebih cepat dari 300ms
+
+  } else {  
+    try {
+      const { BrowserMultiFormatReader } = await import("@zxing/library");
+      const codeReader = new BrowserMultiFormatReader();
+      intervalRef.current = { _zxing: codeReader } as any;
+      const result = await codeReader.decodeFromVideoElement(videoRef.current!);
+      if (result) {
+        stopScan();
+        handleBarcodeResult(result.getText());
+      }
+    } catch {
+      showToast("Browser tidak support scan barcode", "err");
+      stopScan();
+    }
+  }
+}
+
+  // ✅ Restart scan saat device dipilih ulang saat scan sedang aktif
+  async function handleDeviceChange(deviceId: string) {
+    setSelectedDeviceId(deviceId);
+    if (scanMode) {
+      stopScan();
+      // Delay singkat agar stream lama benar-benar berhenti
+      setTimeout(() => startScan(), 300);
     }
   }
 
-  /**
-   * Setelah barcode terdeteksi: cari produk atau buka form tambah.
-   */
   function handleBarcodeResult(barcodeVal: string) {
     const found = products.find(p => p.barcode === barcodeVal);
     if (found) {
@@ -492,10 +516,37 @@ export default function ProdukPage() {
       {/* ── SCAN VIEW ── */}
       {scanMode && (
         <div className="bg-black flex items-center justify-center py-3 flex-shrink-0">
-          <div className="relative">
-            <video ref={videoRef} autoPlay playsInline className="w-64 h-40 object-cover rounded-lg" />
-            <div className="absolute inset-0 border-2 border-amber-400 rounded-lg pointer-events-none" />
-            <p className="text-center text-xs text-gray-300 mt-2">Arahkan kamera ke barcode produk</p>
+          <div className="flex flex-col items-center gap-2">
+
+            {/* ✅ Dropdown pilih kamera */}
+            {devices.length > 1 && (
+              <select
+                value={selectedDeviceId}
+                onChange={e => handleDeviceChange(e.target.value)}
+                className="w-64 px-2 py-1.5 text-xs rounded-lg bg-gray-800 text-white border border-gray-600 outline-none"
+              >
+                {devices.map((d, i) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label || `Kamera ${i + 1}`}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <div className="relative">
+              <video ref={videoRef} autoPlay playsInline muted className="w-64 h-40 object-cover rounded-lg" />
+              {/* Crosshair overlay */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="w-40 h-20 border-2 border-amber-400 rounded-md relative">
+                  <div className="absolute -top-0.5 -left-0.5 w-3 h-3 border-t-2 border-l-2 border-amber-300 rounded-tl" />
+                  <div className="absolute -top-0.5 -right-0.5 w-3 h-3 border-t-2 border-r-2 border-amber-300 rounded-tr" />
+                  <div className="absolute -bottom-0.5 -left-0.5 w-3 h-3 border-b-2 border-l-2 border-amber-300 rounded-bl" />
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 border-b-2 border-r-2 border-amber-300 rounded-br" />
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-400">Arahkan barcode ke dalam kotak kuning</p>
           </div>
         </div>
       )}

@@ -45,7 +45,6 @@ function calcDiscount(
   cart: CartItem[],
   subtotal: number
 ): { amount: number; valid: boolean; reason?: string } {
-  // Happy hour — cek jam sekarang
   if (promo.type === "HAPPY_HOUR") {
     if (!promo.startTime || !promo.endTime) {
       return { amount: 0, valid: false, reason: "Konfigurasi happy hour tidak lengkap" };
@@ -59,7 +58,6 @@ function calcDiscount(
     }
   }
 
-  // Minimum transaksi
   if (promo.type === "MIN_TRANSACTION") {
     if (!promo.minTransaction || subtotal < promo.minTransaction) {
       return {
@@ -69,7 +67,6 @@ function calcDiscount(
     }
   }
 
-  // Base yang kena diskon
   let base = subtotal;
   if (promo.type === "PRODUCT" && promo.productId) {
     const target = cart.filter((i) => i.id === promo.productId);
@@ -84,6 +81,14 @@ function calcDiscount(
     : promo.discountValue;
 
   return { amount: Math.min(amount, subtotal), valid: true };
+}
+
+// ── Helper label tipe promo ───────────────────────────────
+function promoTypeLabel(promo: Promo): string {
+  if (promo.type === "HAPPY_HOUR") return `Happy hour ${promo.startTime}–${promo.endTime}`;
+  if (promo.type === "MIN_TRANSACTION") return `Min. ${formatRupiah(promo.minTransaction ?? 0)}`;
+  if (promo.type === "PRODUCT" && promo.productId) return "Diskon produk tertentu";
+  return "Semua produk";
 }
 
 export default function KasirPage() {
@@ -134,7 +139,6 @@ export default function KasirPage() {
       .catch(() => { setShift(null); });
   }, []);
 
-  // Fetch promo aktif ketika storeId siap
   useEffect(() => {
     if (!storeId) return;
     fetch(`/api/promos?storeId=${storeId}`)
@@ -149,7 +153,7 @@ export default function KasirPage() {
 
   const promoResult = useMemo(() => {
     if (!selectedPromo) return { amount: 0, valid: false };
-    return calcDiscount(selectedPromo, cart, subtotal + tax); // diskon dari total termasuk pajak
+    return calcDiscount(selectedPromo, cart, subtotal + tax);
   }, [selectedPromo, cart, subtotal, tax]);
 
   const discount = promoResult.valid ? promoResult.amount : 0;
@@ -198,7 +202,7 @@ export default function KasirPage() {
     setShowPromoPanel(false);
   }
 
-  // ── STRUK (ditambah baris diskon) ────────────────────────
+  // ── STRUK ────────────────────────────────────────────────
   function printStruk() {
     const now = new Date();
     const trxTime = now.toLocaleString("id-ID", {
@@ -287,7 +291,31 @@ export default function KasirPage() {
     setTimeout(() => { win.print(); win.close(); }, 300);
   }
 
-  // ── SAVE TRANSACTION (ditambah promoId & discountAmount) ─
+  // ── CEK STOK SEBELUM GENERATE TOKEN MIDTRANS ────────────
+  // 🔥 FIX: validasi stok di server SEBELUM user bayar QRIS,
+  //    sehingga transaksi tidak dilanjutkan jika stok habis.
+  async function checkStock(): Promise<boolean> {
+    const res = await fetch("/api/transactions/check-stock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        storeId,
+        items: cart.map((item) => ({
+          productId: item.id,
+          qty: item.qty,
+        })),
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      alert(data?.error || "Stok tidak cukup / produk habis");
+      return false;
+    }
+    return true;
+  }
+
+  // ── SAVE TRANSACTION ─────────────────────────────────────
   async function saveTransaction(method: "cash" | "qris") {
     if (!shift?.id) {
       alert("Shift belum dibuka!");
@@ -314,7 +342,6 @@ export default function KasirPage() {
 
     const data = await res.json().catch(() => null);
 
-    // 🔥 HANDLE ERROR TANPA THROW
     if (!res.ok) {
       alert(data?.error || "Stok tidak cukup / produk habis");
       return false;
@@ -323,32 +350,39 @@ export default function KasirPage() {
     setLastTransaction(data);
     return true;
   }
+
   async function handleBayar() {
     if (cart.length === 0 || !storeId || !userId) return;
 
+    // ── CASH ────────────────────────────────────────────────
     if (paymentMethod === "cash") {
       if (paidNum < total) return;
 
       setLoading(true);
-
       const successSave = await saveTransaction("cash");
-
-      // 🔥 STOP kalau gagal (stok habis dll)
       if (!successSave) {
         setLoading(false);
         return;
       }
 
-      // lanjut kalau sukses
       setSuccess(true);
       setShowStruk(true);
       setTimeout(() => printStruk(), 400);
-
       setLoading(false);
       return;
     }
+
+    // ── QRIS ─────────────────────────────────────────────────
     setQrisLoading(true);
     try {
+      // 🔥 LANGKAH 1: Cek stok dulu SEBELUM generate token
+      const stockOk = await checkStock();
+      if (!stockOk) {
+        setQrisLoading(false);
+        return;
+      }
+
+      // 🔥 LANGKAH 2: Baru generate token Midtrans
       const orderId = `TRX-${Date.now()}`;
       const res = await fetch("/api/midtrans", {
         method: "POST",
@@ -358,10 +392,11 @@ export default function KasirPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Gagal generate QRIS");
 
+      // 🔥 LANGKAH 3: Tampilkan popup QRIS
       window.snap.pay(data.token, {
         onSuccess: async () => {
+          // 🔥 LANGKAH 4: Simpan transaksi (safety net race condition)
           const successSave = await saveTransaction("qris");
-
           if (!successSave) {
             setQrisLoading(false);
             return;
@@ -387,7 +422,8 @@ export default function KasirPage() {
     } catch (err) {
       console.error(err);
       alert("Gagal generate QRIS. Coba lagi.");
-    } finally { setQrisLoading(false); }
+      setQrisLoading(false);
+    }
   }
 
   const now = new Date();
@@ -546,7 +582,6 @@ export default function KasirPage() {
 
                 {/* ── PROMO SECTION ──────────────────────── */}
                 <div className="pt-2 border-t border-gray-50">
-                  {/* Tombol buka/tutup panel promo */}
                   <button
                     onClick={() => setShowPromoPanel((v) => !v)}
                     className="w-full flex items-center justify-between py-1.5 text-xs text-gray-500 hover:text-amber-700 transition-colors"
@@ -564,23 +599,19 @@ export default function KasirPage() {
                     )}
                   </button>
 
-                  {/* Panel pilih promo */}
                   {showPromoPanel && (
                     <div className="mt-2 space-y-1.5 bg-gray-50 rounded-xl p-2.5">
                       {promos.length === 0 ? (
                         <p className="text-[10px] text-gray-400 text-center py-1">Tidak ada promo aktif</p>
                       ) : (
                         <>
-                          {/* Tanpa promo */}
                           <button
                             onClick={() => { setSelectedPromo(null); setShowPromoPanel(false); }}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${!selectedPromo ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-500 hover:bg-white"
-                              }`}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${!selectedPromo ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-500 hover:bg-white"}`}
                           >
                             Tanpa promo
                           </button>
 
-                          {/* List promo */}
                           {promos.map((promo) => {
                             const preview = calcDiscount(promo, cart, subtotal + tax);
                             const discLabel = promo.discountType === "PERCENT"
@@ -617,7 +648,6 @@ export default function KasirPage() {
                     </div>
                   )}
 
-                  {/* Notif diskon aktif */}
                   {selectedPromo && !promoResult.valid && (
                     <p className="text-[10px] text-red-400 mt-1">{promoResult.reason}</p>
                   )}
@@ -689,7 +719,6 @@ export default function KasirPage() {
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Pajak (10%)</span><span>{formatRupiah(tax)}</span>
                   </div>
-                  {/* ── Baris diskon di struk modal ── */}
                   {discount > 0 && selectedPromo && (
                     <div className="flex justify-between text-xs text-green-600">
                       <span>Diskon ({selectedPromo.name})</span>
@@ -736,12 +765,4 @@ export default function KasirPage() {
       </div>
     </>
   );
-}
-
-// ── Helper label tipe promo ───────────────────────────────
-function promoTypeLabel(promo: Promo): string {
-  if (promo.type === "HAPPY_HOUR") return `Happy hour ${promo.startTime}–${promo.endTime}`;
-  if (promo.type === "MIN_TRANSACTION") return `Min. ${formatRupiah(promo.minTransaction ?? 0)}`;
-  if (promo.type === "PRODUCT" && promo.productId) return "Diskon produk tertentu";
-  return "Semua produk";
 }

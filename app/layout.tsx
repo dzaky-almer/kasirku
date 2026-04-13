@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/sidebar";
-import Providers from "./providers"; // ← TAMBAHKAN
+import Providers from "./providers"; 
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Kopi Nusantara",
-  description: "POS Kopi Nusantara",
+  title: "TokoKu | Sistem Kasir Digital",
+  description: "TokoKu | Sistem Kasir Digital",
 };
 
 export default function RootLayout({

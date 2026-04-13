@@ -260,7 +260,9 @@ export default function ProdukPage() {
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      stream = await navigator.mediaDevices.getUserMedia({
+  video: true
+});
     } catch {
       showToast("Gagal akses kamera", "err");
       setScanMode(false);

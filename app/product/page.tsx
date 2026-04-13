@@ -69,14 +69,16 @@ export default function ProdukPage() {
 
   // Barcode scan
   const [scanMode, setScanMode]   = useState(false);
-  const videoRef  = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const videoRef    = useRef<HTMLVideoElement>(null);
+  const streamRef   = useRef<MediaStream | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // ← BARU
 
   // Categories
   const [customCategories, setCustomCategories] = useState<string[]>(["Kopi","Non-Kopi","Makanan","Minuman"]);
   const [showAddCategory, setShowAddCategory]   = useState(false);
   const [newCategory, setNewCategory]           = useState("");
 
+  // ── Fetch produk ──────────────────────────────────────────────
   useEffect(() => {
     if (!storeId) return;
     fetch(`/api/products?storeId=${storeId}`)
@@ -85,6 +87,24 @@ export default function ProdukPage() {
       .catch(() => showToast("Gagal memuat produk", "err"));
   }, [storeId]);
 
+  // ── Cleanup kamera saat komponen unmount ──────────────────────
+  useEffect(() => {
+    return () => {
+      // Hentikan interval / ZXing reader
+      const iv = intervalRef.current as any;
+      if (iv?._zxing) {
+        iv._zxing.reset();
+      } else if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      intervalRef.current = null;
+
+      // Hentikan stream kamera
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    };
+  }, []);
+
   // Derived categories from products + custom
   const allCategories = Array.from(new Set([
     ...customCategories,
@@ -92,7 +112,7 @@ export default function ProdukPage() {
   ]));
 
   // Low stock count
-  const lowCount = products.filter(p => p.stock > 0 && p.stock <= p.minStock).length;
+  const lowCount   = products.filter(p => p.stock > 0 && p.stock <= p.minStock).length;
   const emptyCount = products.filter(p => p.stock === 0).length;
 
   // Filter + sort
@@ -100,8 +120,8 @@ export default function ProdukPage() {
     .filter(p => {
       const q = search.toLowerCase();
       const matchSearch = p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.barcode?.includes(q);
-      const matchCat = catFilter === "all" || p.category === catFilter;
-      const matchStock =
+      const matchCat    = catFilter === "all" || p.category === catFilter;
+      const matchStock  =
         stockFilter === "all"   ? true :
         stockFilter === "empty" ? p.stock === 0 :
         stockFilter === "low"   ? p.stock > 0 && p.stock <= p.minStock :
@@ -109,11 +129,11 @@ export default function ProdukPage() {
       return matchSearch && matchCat && matchStock;
     })
     .sort((a, b) => {
-      if (sortKey === "name")        return a.name.localeCompare(b.name);
-      if (sortKey === "price_asc")   return a.price - b.price;
-      if (sortKey === "price_desc")  return b.price - a.price;
-      if (sortKey === "stock_asc")   return a.stock - b.stock;
-      if (sortKey === "stock_desc")  return b.stock - a.stock;
+      if (sortKey === "name")       return a.name.localeCompare(b.name);
+      if (sortKey === "price_asc")  return a.price - b.price;
+      if (sortKey === "price_desc") return b.price - a.price;
+      if (sortKey === "stock_asc")  return a.stock - b.stock;
+      if (sortKey === "stock_desc") return b.stock - a.stock;
       return 0;
     });
 
@@ -211,46 +231,102 @@ export default function ProdukPage() {
   }
 
   // ── Barcode scan ─────────────────────────────────────────────
+
+  /**
+   * Hentikan scan: bersihkan interval/ZXing, matikan kamera.
+   */
+  function stopScan() {
+    const iv = intervalRef.current as any;
+    if (iv?._zxing) {
+      // ZXing reader — panggil reset()
+      try { iv._zxing.reset(); } catch {}
+    } else if (intervalRef.current) {
+      // Native BarcodeDetector interval
+      clearInterval(intervalRef.current);
+    }
+    intervalRef.current = null;
+
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    setScanMode(false);
+  }
+
+  /**
+   * Mulai scan: coba native BarcodeDetector dulu,
+   * kalau tidak ada (Firefox/Safari) fallback ke ZXing.
+   */
   async function startScan() {
     setScanMode(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
 
-      // Dynamic import BarcodeDetector (Chrome 83+)
-      const BD = (window as any).BarcodeDetector;
-      if (!BD) { showToast("Browser tidak support scan barcode", "err"); stopScan(); return; }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    } catch {
+      showToast("Gagal akses kamera", "err");
+      setScanMode(false);
+      return;
+    }
+
+    streamRef.current = stream;
+    if (videoRef.current) videoRef.current.srcObject = stream;
+
+    const BD = (window as any).BarcodeDetector;
+
+    if (BD) {
+      // ── Path A: Native BarcodeDetector (Chrome 83+, Edge) ────
       const detector = new BD({ formats: ["ean_13", "ean_8", "code_128", "qr_code"] });
 
-      const interval = setInterval(async () => {
+      intervalRef.current = setInterval(async () => {
         if (!videoRef.current) return;
         try {
           const codes = await detector.detect(videoRef.current);
           if (codes.length > 0) {
-            clearInterval(interval);
-            stopScan();
             const barcodeVal = codes[0].rawValue;
-            const found = products.find(p => p.barcode === barcodeVal);
-            if (found) openEdit(found);
-            else {
-              setForm(f => ({ ...f, barcode: barcodeVal }));
-              setEditTarget(null);
-              setShowModal(true);
-            }
+            stopScan();
+            handleBarcodeResult(barcodeVal);
           }
         } catch {}
       }, 300);
-    } catch {
-      showToast("Gagal akses kamera", "err");
-      setScanMode(false);
+
+    } else {
+      // ── Path B: ZXing fallback (Firefox, Safari) ─────────────
+      try {
+        const { BrowserMultiFormatReader } = await import("@zxing/library");
+        const codeReader = new BrowserMultiFormatReader();
+
+        // Simpan reader di intervalRef supaya stopScan bisa reset-nya
+        intervalRef.current = { _zxing: codeReader } as any;
+
+        await codeReader.decodeFromVideoElement(
+          videoRef.current!,
+          (result, err) => {
+            if (result) {
+              const barcodeVal = result.getText();
+              stopScan();
+              handleBarcodeResult(barcodeVal);
+            }
+            // err bisa null (frame belum ada barcode) — abaikan saja
+          }
+        );
+      } catch {
+        showToast("Browser tidak support scan barcode", "err");
+        stopScan();
+      }
     }
   }
 
-  function stopScan() {
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-    setScanMode(false);
+  /**
+   * Setelah barcode terdeteksi: cari produk atau buka form tambah.
+   */
+  function handleBarcodeResult(barcodeVal: string) {
+    const found = products.find(p => p.barcode === barcodeVal);
+    if (found) {
+      openEdit(found);
+    } else {
+      setForm(f => ({ ...f, barcode: barcodeVal }));
+      setEditTarget(null);
+      setShowModal(true);
+    }
   }
 
   // ── Modal helpers ─────────────────────────────────────────────
@@ -353,7 +429,6 @@ export default function ProdukPage() {
   const profit = form.price && form.costPrice
     ? parseInt(form.price) - parseInt(form.costPrice) : null;
 
-  // Margin color
   function marginColor(price: number, cost?: number) {
     if (!cost) return "";
     const pct = ((price - cost) / price) * 100;
@@ -548,7 +623,7 @@ export default function ProdukPage() {
                   </td>
                 </tr>
               ) : filtered.map(p => {
-                const isLow = p.stock > 0 && p.stock <= p.minStock;
+                const isLow   = p.stock > 0 && p.stock <= p.minStock;
                 const isEmpty = p.stock === 0;
                 return (
                   <tr key={p.id} className={`hover:bg-gray-50 transition-colors ${selected.has(p.id) ? "bg-amber-50/50" : ""}`}>
@@ -608,7 +683,7 @@ export default function ProdukPage() {
                       )}
                     </td>
 
-                    {/* Margin highlight */}
+                    {/* Margin */}
                     <td className="px-4 py-3 text-sm font-medium">
                       <span className={marginColor(p.price, p.costPrice)}>
                         {marginLabel(p.price, p.costPrice)}
@@ -640,7 +715,7 @@ export default function ProdukPage() {
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
                         isEmpty ? "bg-red-50 text-red-600"
-                        : isLow ? "bg-orange-50 text-orange-600"
+                        : isLow  ? "bg-orange-50 text-orange-600"
                         : "bg-emerald-50 text-emerald-700"
                       }`}>
                         {isEmpty ? "Habis" : isLow ? "Menipis" : "Aman"}

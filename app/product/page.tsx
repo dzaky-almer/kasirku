@@ -260,25 +260,22 @@ export default function ProdukPage() {
 
 async function startScan() {
   setScanMode(true);
+let stream: MediaStream;
 
-<<<<<<< HEAD
-  let stream: MediaStream;
-  try {
-    const videoConstraints = selectedDeviceId
-      ? { deviceId: { exact: selectedDeviceId } }
-      : { facingMode: "environment" };
-=======
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-  video: true
-});
-    } catch {
-      showToast("Gagal akses kamera", "err");
-      setScanMode(false);
-      return;
-    }
->>>>>>> 400550f1c599de29c1a23a070ef1be49a0a63b0f
+try {
+  const videoConstraints = selectedDeviceId
+    ? { deviceId: { exact: selectedDeviceId } }
+    : { facingMode: "environment" };
+
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: videoConstraints
+  });
+
+} catch {
+  showToast("Gagal akses kamera", "err");
+  setScanMode(false);
+  return;
+}
 
     stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
   } catch {

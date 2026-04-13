@@ -244,7 +244,6 @@ export default function ProdukPage() {
   }
 
   // ── Barcode scan ─────────────────────────────────────────────
-
   function stopScan() {
     const iv = intervalRef.current as any;
     if (iv?._zxing) {
@@ -258,96 +257,87 @@ export default function ProdukPage() {
     setScanMode(false);
   }
 
-async function startScan() {
-  setScanMode(true);
-let stream: MediaStream;
+  // 🔥 FIX: hapus blok try/catch duplikat dan deklarasi stream ganda
+  async function startScan() {
+    setScanMode(true);
 
-try {
-  const videoConstraints = selectedDeviceId
-    ? { deviceId: { exact: selectedDeviceId } }
-    : { facingMode: "environment" };
-
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: videoConstraints
-  });
-
-} catch {
-  showToast("Gagal akses kamera", "err");
-  setScanMode(false);
-  return;
-}
-
-    stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
-  } catch {
-    showToast("Gagal akses kamera", "err");
-    setScanMode(false);
-    return;
-  }
-
-  navigator.mediaDevices.enumerateDevices().then(devs => {
-    const videoDevs = devs.filter(d => d.kind === "videoinput");
-    setDevices(videoDevs);
-  });
-
-  streamRef.current = stream;
-
-  if (videoRef.current) {
-    videoRef.current.srcObject = stream;
-
-    // ✅ Tunggu video benar-benar siap dulu baru mulai detect
-    await new Promise<void>(resolve => {
-      videoRef.current!.onloadedmetadata = () => {
-        videoRef.current!.play().then(resolve).catch(resolve);
-      };
-    });
-  }
-
-  const BD = (window as any).BarcodeDetector;
-
-  if (BD) {
-    const supported = await BD.getSupportedFormats();
-    console.log("Format didukung browser:", supported); // lihat di F12
-
-    const detector = new BD({ formats: supported }); // ✅ pakai semua format yang didukung
-
-    intervalRef.current = setInterval(async () => {
-      if (!videoRef.current || videoRef.current.readyState < 2) return;
-      try {
-        const codes = await detector.detect(videoRef.current);
-        if (codes.length > 0) {
-          const barcodeVal = codes[0].rawValue;
-          console.log("Berhasil scan:", barcodeVal);
-          stopScan();
-          handleBarcodeResult(barcodeVal);
-        }
-      } catch (err) {
-        console.log("Error detect:", err);
-      }
-    }, 200); // ✅ lebih cepat dari 300ms
-
-  } else {  
+    let stream: MediaStream;
     try {
-      const { BrowserMultiFormatReader } = await import("@zxing/library");
-      const codeReader = new BrowserMultiFormatReader();
-      intervalRef.current = { _zxing: codeReader } as any;
-      const result = await codeReader.decodeFromVideoElement(videoRef.current!);
-      if (result) {
-        stopScan();
-        handleBarcodeResult(result.getText());
-      }
+      const videoConstraints = selectedDeviceId
+        ? { deviceId: { exact: selectedDeviceId } }
+        : { facingMode: "environment" };
+
+      stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
     } catch {
-      showToast("Browser tidak support scan barcode", "err");
-      stopScan();
+      showToast("Gagal akses kamera", "err");
+      setScanMode(false);
+      return;
+    }
+
+    // Refresh daftar kamera setelah izin diberikan (label baru tersedia)
+    navigator.mediaDevices.enumerateDevices().then(devs => {
+      const videoDevs = devs.filter(d => d.kind === "videoinput");
+      setDevices(videoDevs);
+    });
+
+    streamRef.current = stream;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+
+      // Tunggu video benar-benar siap dulu baru mulai detect
+      await new Promise<void>(resolve => {
+        videoRef.current!.onloadedmetadata = () => {
+          videoRef.current!.play().then(resolve).catch(resolve);
+        };
+      });
+    }
+
+    const BD = (window as any).BarcodeDetector;
+
+    if (BD) {
+      const supported = await BD.getSupportedFormats();
+      console.log("Format didukung browser:", supported);
+
+      const detector = new BD({ formats: supported });
+
+      intervalRef.current = setInterval(async () => {
+        if (!videoRef.current || videoRef.current.readyState < 2) return;
+        try {
+          const codes = await detector.detect(videoRef.current);
+          if (codes.length > 0) {
+            const barcodeVal = codes[0].rawValue;
+            console.log("Berhasil scan:", barcodeVal);
+            stopScan();
+            handleBarcodeResult(barcodeVal);
+          }
+        } catch (err) {
+          console.log("Error detect:", err);
+        }
+      }, 200);
+
+    } else {
+      try {
+        const { BrowserMultiFormatReader } = await import("@zxing/library");
+        const codeReader = new BrowserMultiFormatReader();
+        intervalRef.current = { _zxing: codeReader } as any;
+        const result = await codeReader.decodeFromVideoElement(videoRef.current!);
+        if (result) {
+          stopScan();
+          handleBarcodeResult(result.getText());
+        }
+      } catch {
+        showToast("Browser tidak support scan barcode", "err");
+        stopScan();
+      }
     }
   }
-}
 
-  // ✅ Restart scan saat device dipilih ulang saat scan sedang aktif
+  // Restart scan saat device dipilih ulang saat scan sedang aktif
   async function handleDeviceChange(deviceId: string) {
     setSelectedDeviceId(deviceId);
     if (scanMode) {
       stopScan();
-      // Delay singkat agar stream lama benar-benar berhenti
       setTimeout(() => startScan(), 300);
     }
   }
@@ -528,7 +518,7 @@ try {
         <div className="bg-black flex items-center justify-center py-3 flex-shrink-0">
           <div className="flex flex-col items-center gap-2">
 
-            {/* ✅ Dropdown pilih kamera */}
+            {/* Dropdown pilih kamera */}
             {devices.length > 1 && (
               <select
                 value={selectedDeviceId}

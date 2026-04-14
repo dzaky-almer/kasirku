@@ -4,21 +4,19 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
+  YAxis,
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  AreaChart, Area
 } from "recharts";
 
-// Tipe data internal dashboard
 interface DashTxn { item: string; time: string; qty: number; amount: number; }
 interface DashStock { name: string; stock: number; unit: string; status: string; }
 interface DashTop { name: string; sold: number; revenue: number; }
 
-// Fallback saat data belum ada
 const emptyTxn: DashTxn[] = [];
 const emptyStock: DashStock[] = [];
 const emptyTop: DashTop[] = [];
@@ -44,6 +42,24 @@ function getToday(): string {
   });
 }
 
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div style={{
+      backgroundColor: "#111827",
+      border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: "10px",
+      fontSize: "12px",
+      padding: "10px 14px",
+    }}>
+      <p style={{ color: "#9ca3af", margin: "0 0 4px 0" }}>Tanggal: {label}</p>
+      <p style={{ color: "#f59e0b", margin: 0, fontWeight: 600, fontSize: "14px" }}>
+        {formatRupiah(payload[0].value as number)}
+      </p>
+    </div>
+  );
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -63,15 +79,12 @@ export default function DashboardPage() {
 
     const today = new Date().toISOString().split("T")[0];
 
-    // Hitung tanggal 7 hari terakhir
     const last7Dates = Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - (6 - i));
-      return d.toISOString().split("T")[0]; // "2026-04-01"
+      return d.toISOString().split("T")[0];
     });
 
-    // 1. Fetch transaksi 7 hari terakhir sekaligus
-    // Fetch per hari paralel
     Promise.all(
       last7Dates.map((date) =>
         fetch(`/api/transactions?storeId=${storeId}&date=${date}`)
@@ -83,34 +96,26 @@ export default function DashboardPage() {
           .catch(() => 0)
       )
     ).then((revenues) => {
-      setSalesData(revenues); // [omzet hari-1, ..., omzet hari ini]
+      setSalesData(revenues);
 
-      // Hitung metric dari transaksi hari ini (index terakhir)
-      // Fetch ulang transaksi hari ini untuk recent list
       fetch(`/api/transactions?storeId=${storeId}&date=${today}`)
         .then((r) => r.json())
         .then((data: any[]) => {
           if (!Array.isArray(data)) return;
-
-          setAllTodayTxns(data); // 🔥 simpan semua transaksi
-
-          const recent = data
-            .slice(0, 5) // 🔥 BATAS 5 TERBARU
-            .map((t) => ({
-              item: t.items?.length > 0 ? `${t.items[0].qty}x item` : `Transaksi`,
-              time: new Date(t.createdAt).toLocaleTimeString("id-ID", {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              qty: (t.items as any[])?.reduce((s: number, i: any) => s + i.qty, 0) ?? 0,
-              amount: t.total,
-            }));
+          setAllTodayTxns(data);
+          const recent = data.slice(0, 5).map((t) => ({
+            item: t.items?.length > 0 ? `${t.items[0].qty}x item` : `Transaksi`,
+            time: new Date(t.createdAt).toLocaleTimeString("id-ID", {
+              hour: "2-digit", minute: "2-digit",
+            }),
+            qty: (t.items as any[])?.reduce((s: number, i: any) => s + i.qty, 0) ?? 0,
+            amount: t.total,
+          }));
           setRecentTxns(recent);
         })
         .catch(console.error);
     });
 
-    // 2. Fetch produk untuk stok
     fetch(`/api/products?storeId=${storeId}`)
       .then((r) => r.json())
       .then((data: any[]) => {
@@ -125,7 +130,6 @@ export default function DashboardPage() {
       })
       .catch(console.error);
 
-    // 3. Fetch laporan hari ini untuk top produk
     fetch(`/api/reports?storeId=${storeId}&date=${today}`)
       .then((r) => r.json())
       .then((data: any) => {
@@ -152,54 +156,29 @@ export default function DashboardPage() {
 
   }, [storeId, status]);
 
-  // Metric cards
   const totalOmzet = salesData[6];
   const totalTxn = allTodayTxns.length;
   const totalItemTerjual = recentTxns.reduce((a, t) => a + t.qty, 0);
   const stokWarn = stockList.filter((p) => p.status === "warn").length;
-  const maxSales = Math.max(...salesData, 1);
 
   const chartData = salesLabels.map((label, i) => ({
     name: label,
     omzet: salesData[i],
   }));
 
-  const CustomLine = (props: any) => {
-    const { points } = props;
-    if (!points || points.length < 2) return null;
-
-    const segments = [];
-
-    for (let i = 1; i < points.length; i++) {
-      const prev = points[i - 1];
-      const curr = points[i];
-
-      const isUp = curr.value >= prev.value;
-
-      // bikin curve (quadratic bezier)
-      const midX = (prev.x + curr.x) / 2;
-      const midY = (prev.y + curr.y) / 2;
-
-      const path = `
-  M ${prev.x} ${prev.y}
-  C ${midX} ${prev.y},
-    ${midX} ${curr.y},
-    ${curr.x} ${curr.y}
-`;
-
-      segments.push(
-        <path
-          key={i}
-          d={path}
-          fill="none"
-          stroke={isUp ? "#22c55e" : "#ef4444"}
-          strokeWidth={3}
-          strokeLinecap="round"
-        />
-      );
+  const CustomDot = (props: any) => {
+    const { cx, cy, index } = props;
+    if (cx == null || cy == null) return null;
+    if (index === 0) {
+      return <circle cx={cx} cy={cy} r={5} fill="#BA7517" stroke="#fff" strokeWidth={2.5} />;
     }
-
-    return <g>{segments}</g>;
+    const isUp = chartData[index].omzet >= chartData[index - 1].omzet;
+    return (
+      <circle cx={cx} cy={cy} r={5}
+        fill={isUp ? "#16a34a" : "#dc2626"}
+        stroke="#fff" strokeWidth={2.5}
+      />
+    );
   };
 
   return (
@@ -246,44 +225,81 @@ export default function DashboardPage() {
 
           {/* Chart + Transaksi */}
           <div className="grid grid-cols-3 gap-3 mb-5">
-            <div className="col-span-2 bg-white rounded-xl p-4 border border-gray-100">
-              <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">
-                PENJUALAN 7 HARI TERAKHIR
-              </p>
-              <div className="w-full h-40">
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={chartData}>
+            <div className="col-span-2 bg-white rounded-xl p-5 border border-gray-100">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-medium text-gray-400 tracking-wider mb-5">
+                  PENJUALAN 7 HARI TERAKHIR
+                </p>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                    <span className="w-2 h-2 rounded-full bg-green-600 inline-block" />
+                    Naik
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                    <span className="w-2 h-2 rounded-full bg-red-600 inline-block" />
+                    Turun
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                    <span className="w-2 h-2 rounded-full bg-amber-700 inline-block" />
+                    Awal
+                  </span>
+                </div>
+              </div>
 
-                    <CartesianGrid strokeDasharray="3 3" />
+
+
+              <div className="w-full h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="omzetFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%"   stopColor="#f59e0b" stopOpacity={0.5}  />
+                        <stop offset="60%"  stopColor="#BA7517" stopOpacity={0.15} />
+                        <stop offset="100%" stopColor="#BA7517" stopOpacity={0}    />
+                      </linearGradient>
+                    </defs>
+
+                    <CartesianGrid
+                      strokeDasharray="4 4"
+                      stroke="rgba(0,0,0,0.05)"
+                      vertical={false}
+                    />
 
                     <XAxis
                       dataKey="name"
                       fontSize={10}
                       tick={{ fill: "#9ca3af" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+
+                    <YAxis
+                      fontSize={10}
+                      tick={{ fill: "#9ca3af" }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) => formatRupiah(v)}
+                      width={64}
                     />
 
                     <Tooltip
-                      formatter={(value) => formatRupiah(Number(value))}
-                      labelFormatter={(label) => `Tanggal: ${label}`}
-                      contentStyle={{
-                        backgroundColor: "#111827",
-                        border: "none",
-                        borderRadius: "10px"
-                      }}
-                      labelStyle={{ color: "#e5e7eb" }}
-                      itemStyle={{ color: "#f59e0b" }}
+                      content={<CustomTooltip />}
+                      cursor={{ stroke: "rgba(186,117,23,0.25)", strokeWidth: 1, strokeDasharray: "4 4" }}
                     />
 
-                    {/* 🔥 LINE CUSTOM */}
-                    <Line
+                    <Area
                       type="monotone"
                       dataKey="omzet"
-                      stroke="none"
-                      dot={false}
-                      shape={(props) => <CustomLine {...props} />}
+                      stroke="#BA7517"
+                      strokeWidth={2.5}
+                      fill="url(#omzetFill)"
+                      dot={<CustomDot />}
+                      activeDot={{ r: 7, fill: "#f59e0b", stroke: "#fff", strokeWidth: 2.5 }}
+                      isAnimationActive={true}
+                      animationDuration={900}
+                      animationEasing="ease-out"
                     />
-
-                  </LineChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
@@ -330,8 +346,11 @@ export default function DashboardPage() {
                         <p className="text-xs text-gray-800 truncate max-w-[120px]">{p.name}</p>
                         <p className="text-[10px] text-gray-400">Sisa: {p.stock} {p.unit}</p>
                       </div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${p.status === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"
-                        }`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                        p.status === "ok"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-red-50 text-red-600"
+                      }`}>
                         {p.status === "ok" ? "Aman" : "Menipis"}
                       </span>
                     </div>

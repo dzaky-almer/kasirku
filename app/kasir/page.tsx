@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Script from "next/script";
@@ -18,10 +18,9 @@ interface CartItem extends Product {
   qty: number;
 }
 
-// ── TIPE PROMO ─────────────────────────────────────────────
-interface Promo {
+// ── TIPE PROMO (updated: multi-rule) ────────────────────────
+interface PromoRule {
   id: string;
-  name: string;
   type: "PRODUCT" | "HAPPY_HOUR" | "MIN_TRANSACTION";
   discountType: "PERCENT" | "NOMINAL";
   discountValue: number;
@@ -31,7 +30,16 @@ interface Promo {
   minTransaction?: number | null;
 }
 
+interface Promo {
+  id: string;
+  name: string;
+  tag?: string | null;
+  isActive: boolean;
+  rules: PromoRule[];
+}
+
 function formatRupiah(amount: number): string {
+  if (amount == null || isNaN(amount)) return "Rp 0";
   return "Rp " + amount.toLocaleString("id-ID");
 }
 
@@ -39,56 +47,92 @@ declare global {
   interface Window { snap: any; }
 }
 
-// ── HELPER: validasi & hitung diskon ────────────────────────
+// ── HELPER: validasi & hitung diskon (multi-rule) ────────────
 function calcDiscount(
   promo: Promo,
   cart: CartItem[],
   subtotal: number
 ): { amount: number; valid: boolean; reason?: string } {
-  if (promo.type === "HAPPY_HOUR") {
-    if (!promo.startTime || !promo.endTime) {
-      return { amount: 0, valid: false, reason: "Konfigurasi happy hour tidak lengkap" };
-    }
-    const now = new Date();
-    const cur = now.getHours() * 60 + now.getMinutes();
-    const [sh, sm] = promo.startTime.split(":").map(Number);
-    const [eh, em] = promo.endTime.split(":").map(Number);
-    if (cur < sh * 60 + sm || cur > eh * 60 + em) {
-      return { amount: 0, valid: false, reason: `Berlaku ${promo.startTime}–${promo.endTime}` };
-    }
+  if (!promo.rules?.length) {
+    return { amount: 0, valid: false, reason: "Tidak ada aturan promo" };
   }
 
-  if (promo.type === "MIN_TRANSACTION") {
-    if (!promo.minTransaction || subtotal < promo.minTransaction) {
-      return {
-        amount: 0, valid: false,
-        reason: `Min. transaksi ${formatRupiah(promo.minTransaction ?? 0)}`,
-      };
+  let totalDiscount = 0;
+  let anyValid = false;
+  let lastReason: string | undefined;
+
+  for (const rule of promo.rules) {
+    // Validasi HAPPY_HOUR
+    if (rule.type === "HAPPY_HOUR") {
+      if (!rule.startTime || !rule.endTime) {
+        lastReason = "Konfigurasi happy hour tidak lengkap";
+        continue;
+      }
+      const now = new Date();
+      const cur = now.getHours() * 60 + now.getMinutes();
+      const [sh, sm] = rule.startTime.split(":").map(Number);
+      const [eh, em] = rule.endTime.split(":").map(Number);
+      if (cur < sh * 60 + sm || cur > eh * 60 + em) {
+        lastReason = `Berlaku ${rule.startTime}–${rule.endTime}`;
+        continue;
+      }
     }
+
+    // Validasi MIN_TRANSACTION
+    if (rule.type === "MIN_TRANSACTION") {
+      if (!rule.minTransaction || subtotal < rule.minTransaction) {
+        lastReason = `Min. transaksi ${formatRupiah(rule.minTransaction ?? 0)}`;
+        continue;
+      }
+    }
+
+    // Hitung base
+    let base = subtotal;
+    if (rule.type === "PRODUCT" && rule.productId) {
+      const target = cart.filter((i) => i.id === rule.productId);
+      if (!target.length) {
+        lastReason = "Produk promo tidak ada di keranjang";
+        continue;
+      }
+      base = target.reduce((s, i) => s + i.price * i.qty, 0);
+    }
+
+    const amount =
+      rule.discountType === "PERCENT"
+        ? Math.round((base * rule.discountValue) / 100)
+        : rule.discountValue;
+
+    totalDiscount += amount;
+    anyValid = true;
   }
 
-  let base = subtotal;
-  if (promo.type === "PRODUCT" && promo.productId) {
-    const target = cart.filter((i) => i.id === promo.productId);
-    if (!target.length) {
-      return { amount: 0, valid: false, reason: "Produk promo tidak ada di keranjang" };
-    }
-    base = target.reduce((s, i) => s + i.price * i.qty, 0);
-  }
-
-  const amount = promo.discountType === "PERCENT"
-    ? Math.round((base * promo.discountValue) / 100)
-    : promo.discountValue;
-
-  return { amount: Math.min(amount, subtotal), valid: true };
+  if (!anyValid) return { amount: 0, valid: false, reason: lastReason };
+  return { amount: Math.min(totalDiscount, subtotal), valid: true };
 }
 
 // ── Helper label tipe promo ───────────────────────────────
 function promoTypeLabel(promo: Promo): string {
-  if (promo.type === "HAPPY_HOUR") return `Happy hour ${promo.startTime}–${promo.endTime}`;
-  if (promo.type === "MIN_TRANSACTION") return `Min. ${formatRupiah(promo.minTransaction ?? 0)}`;
-  if (promo.type === "PRODUCT" && promo.productId) return "Diskon produk tertentu";
-  return "Semua produk";
+  if (!promo.rules?.length) return "Semua produk";
+  return promo.rules
+    .map((rule) => {
+      if (rule.type === "HAPPY_HOUR") return `Happy hour ${rule.startTime}–${rule.endTime}`;
+      if (rule.type === "MIN_TRANSACTION") return `Min. ${formatRupiah(rule.minTransaction ?? 0)}`;
+      if (rule.type === "PRODUCT") return "Diskon produk tertentu";
+      return "Semua produk";
+    })
+    .join(" + ");
+}
+
+// ── Helper label diskon promo ─────────────────────────────
+function promoDiscLabel(promo: Promo): string {
+  if (!promo.rules?.length) return "-";
+  return promo.rules
+    .map((rule) =>
+      rule.discountType === "PERCENT"
+        ? `${rule.discountValue}%`
+        : formatRupiah(rule.discountValue)
+    )
+    .join(" + ");
 }
 
 export default function KasirPage() {
@@ -99,10 +143,15 @@ export default function KasirPage() {
   const strutRef = useRef<HTMLDivElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
-  const categories = useMemo(() => [
-    "Semua",
-    ...Array.from(new Set(products.map((p) => p.category).filter(Boolean) as string[])),
-  ], [products]);
+  const categories = useMemo(
+    () => [
+      "Semua",
+      ...Array.from(
+        new Set(products.map((p) => p.category).filter(Boolean) as string[])
+      ),
+    ],
+    [products]
+  );
 
   const [activeCategory, setActiveCategory] = useState("Semua");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -125,7 +174,10 @@ export default function KasirPage() {
     if (!storeId) return;
     fetch(`/api/products?storeId=${storeId}`)
       .then((res) => res.json())
-      .then((data) => { if (Array.isArray(data)) setProducts(data); })
+      .then((data) => {
+        if (Array.isArray(data))
+          setProducts(data.map((p) => ({ ...p, price: p.price ?? 0 })));
+      })
       .catch(() => console.error("Gagal fetch produk"));
   }, [storeId]);
 
@@ -136,19 +188,21 @@ export default function KasirPage() {
         if (!res.ok) throw new Error();
         setShift(data);
       })
-      .catch(() => { setShift(null); });
+      .catch(() => setShift(null));
   }, []);
 
   useEffect(() => {
     if (!storeId) return;
     fetch(`/api/promos?storeId=${storeId}`)
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setPromos(data); })
-      .catch(() => { });
+      .then((data) => {
+        if (Array.isArray(data)) setPromos(data);
+      })
+      .catch(() => {});
   }, [storeId]);
 
   // ── KALKULASI ────────────────────────────────────────────
-  const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
+  const subtotal = cart.reduce((sum, c) => sum + (c.price ?? 0) * c.qty, 0);
   const tax = Math.round(subtotal * 0.1);
 
   const promoResult = useMemo(() => {
@@ -170,14 +224,19 @@ export default function KasirPage() {
   function addToCart(product: Product) {
     setCart((prev) => {
       const existing = prev.find((c) => c.id === product.id);
-      if (existing) return prev.map((c) => c.id === product.id ? { ...c, qty: c.qty + 1 } : c);
-      return [...prev, { ...product, qty: 1 }];
+      if (existing)
+        return prev.map((c) =>
+          c.id === product.id ? { ...c, qty: c.qty + 1 } : c
+        );
+      return [...prev, { ...product, price: product.price ?? 0, qty: 1 }];
     });
   }
 
   function updateQty(id: string, delta: number) {
     setCart((prev) =>
-      prev.map((c) => c.id === id ? { ...c, qty: c.qty + delta } : c).filter((c) => c.qty > 0)
+      prev
+        .map((c) => (c.id === id ? { ...c, qty: c.qty + delta } : c))
+        .filter((c) => c.qty > 0)
     );
   }
 
@@ -185,7 +244,7 @@ export default function KasirPage() {
     const num = parseInt(val);
     if (isNaN(num) || num < 0) return;
     if (num === 0) setCart((prev) => prev.filter((c) => c.id !== id));
-    else setCart((prev) => prev.map((c) => c.id === id ? { ...c, qty: num } : c));
+    else setCart((prev) => prev.map((c) => (c.id === id ? { ...c, qty: num } : c)));
   }
 
   function removeFromCart(id: string) {
@@ -206,28 +265,36 @@ export default function KasirPage() {
   function printStruk() {
     const now = new Date();
     const trxTime = now.toLocaleString("id-ID", {
-      day: "numeric", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit"
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
 
-    const itemRows = cart.map((item) =>
-      `<tr>
+    const itemRows = cart
+      .map(
+        (item) =>
+          `<tr>
         <td style="padding:1px 0">${item.name}</td>
         <td style="text-align:right;white-space:nowrap">${item.qty} x ${formatRupiah(item.price)}</td>
       </tr>
       <tr>
         <td colspan="2" style="text-align:right;padding-bottom:3px">${formatRupiah(item.price * item.qty)}</td>
       </tr>`
-    ).join("");
+      )
+      .join("");
 
-    const discountRow = discount > 0 && selectedPromo ? `
-      <tr><td>Diskon (${selectedPromo.name})</td><td style="text-align:right">-${formatRupiah(discount)}</td></tr>
-    ` : "";
+    const discountRow =
+      discount > 0 && selectedPromo
+        ? `<tr><td>Diskon (${selectedPromo.name})</td><td style="text-align:right">-${formatRupiah(discount)}</td></tr>`
+        : "";
 
-    const cashRows = paymentMethod === "cash" ? `
-      <tr><td>Tunai</td><td style="text-align:right">${formatRupiah(paidNum)}</td></tr>
-      <tr><td>Kembali</td><td style="text-align:right">${formatRupiah(kembalian)}</td></tr>
-    ` : `<tr><td colspan="2" style="text-align:center">-- Dibayar via QRIS --</td></tr>`;
+    const cashRows =
+      paymentMethod === "cash"
+        ? `<tr><td>Tunai</td><td style="text-align:right">${formatRupiah(paidNum)}</td></tr>
+           <tr><td>Kembali</td><td style="text-align:right">${formatRupiah(kembalian)}</td></tr>`
+        : `<tr><td colspan="2" style="text-align:center">-- Dibayar via QRIS --</td></tr>`;
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Struk</title>
@@ -288,25 +355,22 @@ export default function KasirPage() {
     win.document.write(html);
     win.document.close();
     win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 300);
+    setTimeout(() => {
+      win.print();
+      win.close();
+    }, 300);
   }
 
-  // ── CEK STOK SEBELUM GENERATE TOKEN MIDTRANS ────────────
-  // 🔥 FIX: validasi stok di server SEBELUM user bayar QRIS,
-  //    sehingga transaksi tidak dilanjutkan jika stok habis.
+  // ── CEK STOK ─────────────────────────────────────────────
   async function checkStock(): Promise<boolean> {
     const res = await fetch("/api/transactions/check-stock", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         storeId,
-        items: cart.map((item) => ({
-          productId: item.id,
-          qty: item.qty,
-        })),
+        items: cart.map((item) => ({ productId: item.id, qty: item.qty })),
       }),
     });
-
     const data = await res.json().catch(() => null);
     if (!res.ok) {
       alert(data?.error || "Stok tidak cukup / produk habis");
@@ -341,7 +405,6 @@ export default function KasirPage() {
     });
 
     const data = await res.json().catch(() => null);
-
     if (!res.ok) {
       alert(data?.error || "Stok tidak cukup / produk habis");
       return false;
@@ -357,14 +420,9 @@ export default function KasirPage() {
     // ── CASH ────────────────────────────────────────────────
     if (paymentMethod === "cash") {
       if (paidNum < total) return;
-
       setLoading(true);
-      const successSave = await saveTransaction("cash");
-      if (!successSave) {
-        setLoading(false);
-        return;
-      }
-
+      const ok = await saveTransaction("cash");
+      if (!ok) { setLoading(false); return; }
       setSuccess(true);
       setShowStruk(true);
       setTimeout(() => printStruk(), 400);
@@ -375,14 +433,9 @@ export default function KasirPage() {
     // ── QRIS ─────────────────────────────────────────────────
     setQrisLoading(true);
     try {
-      // 🔥 LANGKAH 1: Cek stok dulu SEBELUM generate token
       const stockOk = await checkStock();
-      if (!stockOk) {
-        setQrisLoading(false);
-        return;
-      }
+      if (!stockOk) { setQrisLoading(false); return; }
 
-      // 🔥 LANGKAH 2: Baru generate token Midtrans
       const orderId = `TRX-${Date.now()}`;
       const res = await fetch("/api/midtrans", {
         method: "POST",
@@ -392,32 +445,18 @@ export default function KasirPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Gagal generate QRIS");
 
-      // 🔥 LANGKAH 3: Tampilkan popup QRIS
       window.snap.pay(data.token, {
         onSuccess: async () => {
-          // 🔥 LANGKAH 4: Simpan transaksi (safety net race condition)
-          const successSave = await saveTransaction("qris");
-          if (!successSave) {
-            setQrisLoading(false);
-            return;
-          }
-
+          const ok = await saveTransaction("qris");
+          if (!ok) { setQrisLoading(false); return; }
           setSuccess(true);
           setShowStruk(true);
           setTimeout(() => printStruk(), 400);
           setQrisLoading(false);
         },
-        onPending: () => {
-          alert("Pembayaran pending.");
-          setQrisLoading(false);
-        },
-        onError: () => {
-          alert("Pembayaran gagal. Coba lagi.");
-          setQrisLoading(false);
-        },
-        onClose: () => {
-          setQrisLoading(false);
-        },
+        onPending: () => { alert("Pembayaran pending."); setQrisLoading(false); },
+        onError: () => { alert("Pembayaran gagal. Coba lagi."); setQrisLoading(false); },
+        onClose: () => { setQrisLoading(false); },
       });
     } catch (err) {
       console.error(err);
@@ -428,45 +467,73 @@ export default function KasirPage() {
 
   const now = new Date();
   const trxId = lastTransaction?.id?.slice(0, 8) ?? "—";
-  const trxTime = now.toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const trxTime = now.toLocaleString("id-ID", {
+    day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
 
   return (
     <>
-      <Script src="https://app.sandbox.midtrans.com/snap/snap.js" data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY} strategy="lazyOnload" />
+      <Script
+        src="https://app.sandbox.midtrans.com/snap/snap.js"
+        data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
+        strategy="lazyOnload"
+      />
 
       <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
+        {/* ── PRODUCT AREA ──────────────────────────────────── */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">
             <span className="text-sm font-medium text-gray-900">Kasir</span>
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400">
-                {now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short", year: "numeric" })}
+                {now.toLocaleDateString("id-ID", {
+                  weekday: "long", day: "numeric",
+                  month: "short", year: "numeric",
+                })}
               </span>
-              <button onClick={() => router.push("/dashboard")} className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
+              <button
+                onClick={() => router.push("/dashboard")}
+                className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
+              >
                 ← Dashboard
               </button>
             </div>
           </header>
 
+          {/* Search + Kategori */}
           <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0">
             <div className="flex-1 relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" viewBox="0 0 16 16" fill="none" strokeWidth={1.5}>
                 <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
                 <path d="M10.5 10.5L14 14" stroke="currentColor" strokeLinecap="round" />
               </svg>
-              <input type="text" placeholder="Cari menu..." value={search} onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-100 rounded-lg outline-none focus:border-amber-300 transition-colors" />
+              <input
+                type="text"
+                placeholder="Cari menu..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-100 rounded-lg outline-none focus:border-amber-300 transition-colors"
+              />
             </div>
             <div className="flex gap-2 flex-wrap">
               {categories.map((cat) => (
-                <button key={cat} onClick={() => setActiveCategory(cat)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeCategory === cat ? "bg-amber-700 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    activeCategory === cat
+                      ? "bg-amber-700 text-white"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  }`}
+                >
                   {cat}
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Product Grid */}
           <div className="flex-1 overflow-y-auto p-5">
             {!storeId ? (
               <div className="flex items-center justify-center h-full text-sm text-gray-400">Memuat sesi...</div>
@@ -479,8 +546,14 @@ export default function KasirPage() {
                 {filtered.map((product) => {
                   const inCart = cart.find((c) => c.id === product.id);
                   return (
-                    <button key={product.id} onClick={() => addToCart(product)} disabled={product.stock === 0}
-                      className={`bg-white border rounded-xl overflow-hidden text-left hover:border-amber-300 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${inCart ? "border-amber-400" : "border-gray-100"}`}>
+                    <button
+                      key={product.id}
+                      onClick={() => addToCart(product)}
+                      disabled={product.stock === 0}
+                      className={`bg-white border rounded-xl overflow-hidden text-left hover:border-amber-300 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+                        inCart ? "border-amber-400" : "border-gray-100"
+                      }`}
+                    >
                       <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
                         {product.imageUrl ? (
                           <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
@@ -494,7 +567,9 @@ export default function KasirPage() {
                         <p className="text-[10px] text-gray-400 mt-0.5">Stok: {product.stock}</p>
                         {inCart && (
                           <div className="mt-1">
-                            <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">{inCart.qty} di keranjang</span>
+                            <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">
+                              {inCart.qty} di keranjang
+                            </span>
                           </div>
                         )}
                       </div>
@@ -511,7 +586,12 @@ export default function KasirPage() {
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-900">Pesanan</span>
             {cart.length > 0 && (
-              <button onClick={clearCart} className="text-xs text-gray-400 hover:text-red-500 transition-colors">Kosongkan</button>
+              <button
+                onClick={clearCart}
+                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+              >
+                Kosongkan
+              </button>
             )}
           </div>
 
@@ -543,23 +623,33 @@ export default function KasirPage() {
                       <p className="text-[10px] text-gray-400">{formatRupiah(item.price)}</p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => updateQty(item.id, -1)}
-                        className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 text-sm font-medium transition-colors">
+                      <button
+                        onClick={() => updateQty(item.id, -1)}
+                        className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 text-sm font-medium transition-colors"
+                      >
                         −
                       </button>
                       <input
-                        type="number" min="0" value={item.qty}
+                        type="number"
+                        min="0"
+                        value={item.qty}
                         onChange={(e) => setQtyDirect(item.id, e.target.value)}
                         className="w-8 h-6 text-center text-xs font-medium text-gray-800 border border-gray-200 rounded outline-none focus:border-amber-400"
                       />
-                      <button onClick={() => updateQty(item.id, 1)}
-                        className="w-6 h-6 rounded-md bg-amber-100 flex items-center justify-center text-amber-800 hover:bg-amber-200 text-sm font-medium transition-colors">
+                      <button
+                        onClick={() => updateQty(item.id, 1)}
+                        className="w-6 h-6 rounded-md bg-amber-100 flex items-center justify-center text-amber-800 hover:bg-amber-200 text-sm font-medium transition-colors"
+                      >
                         +
                       </button>
                     </div>
-                    <span className="text-xs font-medium text-gray-700 min-w-[50px] text-right">{formatRupiah(item.price * item.qty)}</span>
-                    <button onClick={() => removeFromCart(item.id)}
-                      className="ml-1 p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0">
+                    <span className="text-xs font-medium text-gray-700 min-w-[50px] text-right">
+                      {formatRupiah(item.price * item.qty)}
+                    </span>
+                    <button
+                      onClick={() => removeFromCart(item.id)}
+                      className="ml-1 p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
+                    >
                       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
                         <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeLinecap="round" />
                       </svg>
@@ -574,10 +664,12 @@ export default function KasirPage() {
             <div className="px-5 py-4 border-t border-gray-100">
               <div className="space-y-1.5 mb-4">
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>Subtotal</span><span>{formatRupiah(subtotal)}</span>
+                  <span>Subtotal</span>
+                  <span>{formatRupiah(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>Pajak (10%)</span><span>{formatRupiah(tax)}</span>
+                  <span>Pajak (10%)</span>
+                  <span>{formatRupiah(tax)}</span>
                 </div>
 
                 {/* ── PROMO SECTION ──────────────────────── */}
@@ -590,9 +682,11 @@ export default function KasirPage() {
                       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
                         <path d="M2 8h12M8 2v12" stroke="currentColor" strokeLinecap="round" />
                       </svg>
-                      {selectedPromo && promoResult.valid
-                        ? <span className="text-green-600 font-medium">{selectedPromo.name}</span>
-                        : "Pakai promo"}
+                      {selectedPromo && promoResult.valid ? (
+                        <span className="text-green-600 font-medium">{selectedPromo.name}</span>
+                      ) : (
+                        "Pakai promo"
+                      )}
                     </span>
                     {selectedPromo && promoResult.valid && (
                       <span className="text-green-600 font-medium">-{formatRupiah(discount)}</span>
@@ -607,33 +701,42 @@ export default function KasirPage() {
                         <>
                           <button
                             onClick={() => { setSelectedPromo(null); setShowPromoPanel(false); }}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${!selectedPromo ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-500 hover:bg-white"}`}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                              !selectedPromo
+                                ? "bg-amber-50 text-amber-700 font-medium"
+                                : "text-gray-500 hover:bg-white"
+                            }`}
                           >
                             Tanpa promo
                           </button>
 
                           {promos.map((promo) => {
                             const preview = calcDiscount(promo, cart, subtotal + tax);
-                            const discLabel = promo.discountType === "PERCENT"
-                              ? `${promo.discountValue}%`
-                              : formatRupiah(promo.discountValue);
+                            const discLabel = promoDiscLabel(promo);
                             const isSelected = selectedPromo?.id === promo.id;
 
                             return (
                               <button
                                 key={promo.id}
                                 onClick={() => { setSelectedPromo(promo); setShowPromoPanel(false); }}
-                                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors ${isSelected
-                                  ? "bg-amber-50 border border-amber-200"
-                                  : "hover:bg-white border border-transparent"
-                                  }`}
+                                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                                  isSelected
+                                    ? "bg-amber-50 border border-amber-200"
+                                    : "hover:bg-white border border-transparent"
+                                }`}
                               >
                                 <div className="flex justify-between items-start">
                                   <div>
-                                    <p className={`font-medium ${isSelected ? "text-amber-700" : "text-gray-700"}`}>{promo.name}</p>
+                                    <p className={`font-medium ${isSelected ? "text-amber-700" : "text-gray-700"}`}>
+                                      {promo.name}
+                                    </p>
                                     <p className="text-[10px] text-gray-400 mt-0.5">{promoTypeLabel(promo)}</p>
                                   </div>
-                                  <span className={`font-medium ml-2 flex-shrink-0 ${preview.valid ? "text-green-600" : "text-gray-400 line-through"}`}>
+                                  <span
+                                    className={`font-medium ml-2 flex-shrink-0 ${
+                                      preview.valid ? "text-green-600" : "text-gray-400 line-through"
+                                    }`}
+                                  >
                                     -{discLabel}
                                   </span>
                                 </div>
@@ -660,15 +763,28 @@ export default function KasirPage() {
                 </div>
               </div>
 
+              {/* Metode Bayar */}
               <div className="mb-3">
                 <label className="text-[10px] text-gray-400 mb-1 block">Metode Pembayaran</label>
                 <div className="flex gap-2">
-                  <button onClick={() => setPaymentMethod("cash")}
-                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${paymentMethod === "cash" ? "bg-amber-700 text-white border-amber-700" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                  <button
+                    onClick={() => setPaymentMethod("cash")}
+                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${
+                      paymentMethod === "cash"
+                        ? "bg-amber-700 text-white border-amber-700"
+                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
                     💵 Cash
                   </button>
-                  <button onClick={() => setPaymentMethod("qris")}
-                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${paymentMethod === "qris" ? "bg-amber-700 text-white border-amber-700" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                  <button
+                    onClick={() => setPaymentMethod("qris")}
+                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${
+                      paymentMethod === "qris"
+                        ? "bg-amber-700 text-white border-amber-700"
+                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
                     📱 QRIS
                   </button>
                 </div>
@@ -677,18 +793,40 @@ export default function KasirPage() {
               {paymentMethod === "cash" && (
                 <div className="mb-3">
                   <label className="text-[10px] text-black mb-1 block">Uang diterima</label>
-                  <input type="text" placeholder="Rp 0" value={paid}
-                    onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); setPaid(raw ? "Rp " + parseInt(raw).toLocaleString("id-ID") : ""); }}
-                    className="w-full px-3 py-2 text-sm border text-black border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors" />
-                  {paidNum > 0 && paidNum >= total && <p className="text-xs text-emerald-600 mt-1">Kembalian: {formatRupiah(kembalian)}</p>}
-                  {paidNum > 0 && paidNum < total && <p className="text-xs text-red-500 mt-1">Kurang: {formatRupiah(total - paidNum)}</p>}
+                  <input
+                    type="text"
+                    placeholder="Rp 0"
+                    value={paid}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, "");
+                      setPaid(raw ? "Rp " + parseInt(raw).toLocaleString("id-ID") : "");
+                    }}
+                    className="w-full px-3 py-2 text-sm border text-black border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors"
+                  />
+                  {paidNum > 0 && paidNum >= total && (
+                    <p className="text-xs text-emerald-600 mt-1">Kembalian: {formatRupiah(kembalian)}</p>
+                  )}
+                  {paidNum > 0 && paidNum < total && (
+                    <p className="text-xs text-red-500 mt-1">Kurang: {formatRupiah(total - paidNum)}</p>
+                  )}
                 </div>
               )}
 
-              <button onClick={handleBayar}
-                disabled={cart.length === 0 || (paymentMethod === "cash" && paidNum < total) || loading || qrisLoading}
-                className="w-full py-2.5 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                {loading || qrisLoading ? "Memproses..." : paymentMethod === "qris" ? "Bayar via QRIS" : "Bayar Cash"}
+              <button
+                onClick={handleBayar}
+                disabled={
+                  cart.length === 0 ||
+                  (paymentMethod === "cash" && paidNum < total) ||
+                  loading ||
+                  qrisLoading
+                }
+                className="w-full py-2.5 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {loading || qrisLoading
+                  ? "Memproses..."
+                  : paymentMethod === "qris"
+                  ? "Bayar via QRIS"
+                  : "Bayar Cash"}
               </button>
             </div>
           )}
@@ -697,7 +835,10 @@ export default function KasirPage() {
         {/* ── MODAL SUKSES + STRUK ────────────────────────── */}
         {success && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl w-80 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="bg-white rounded-2xl w-80 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div ref={strutRef} className="px-6 py-5 border-b border-dashed border-gray-200">
                 <div className="text-center mb-3">
                   <p className="text-sm font-bold text-gray-900">KOPI NUSANTARA</p>
@@ -739,23 +880,30 @@ export default function KasirPage() {
                     </>
                   )}
                   <div className="flex justify-between text-xs text-gray-500">
-                    <span>Metode</span><span>{paymentMethod === "cash" ? "Cash" : "QRIS"}</span>
+                    <span>Metode</span>
+                    <span>{paymentMethod === "cash" ? "Cash" : "QRIS"}</span>
                   </div>
                 </div>
                 <p className="text-center text-[10px] text-gray-400 mt-3">Terima kasih!</p>
               </div>
 
               <div className="px-6 py-4 space-y-2">
-                <button onClick={printStruk}
-                  className="w-full py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors">
+                <button
+                  onClick={printStruk}
+                  className="w-full py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors"
+                >
                   🖨️ Cetak Struk
                 </button>
-                <button onClick={clearCart}
-                  className="w-full py-2 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors">
+                <button
+                  onClick={clearCart}
+                  className="w-full py-2 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors"
+                >
                   Transaksi Berikutnya
                 </button>
-                <button onClick={() => router.push("/dashboard")}
-                  className="w-full py-2 bg-white text-gray-500 text-sm font-medium rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+                <button
+                  onClick={() => router.push("/dashboard")}
+                  className="w-full py-2 bg-white text-gray-500 text-sm font-medium rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
+                >
                   Kembali ke Dashboard
                 </button>
               </div>

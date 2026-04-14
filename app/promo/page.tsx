@@ -14,9 +14,8 @@ interface Product {
   price: number;
 }
 
-interface Promo {
+interface PromoRule {
   id: string;
-  name: string;
   type: PromoType;
   discountType: DiscountType;
   discountValue: number;
@@ -25,25 +24,46 @@ interface Promo {
   startTime?: string | null;
   endTime?: string | null;
   minTransaction?: number | null;
+}
+
+interface Promo {
+  id: string;
+  name: string;
+  tag?: string | null;           // label warna: "red"|"blue"|"green"|"purple"|"orange"
+  priority: number;              // urutan evaluasi (1 = tertinggi)
+  stackable: boolean;            // bisa digabung dgn promo lain?
+  maxUsage?: number | null;      // batas pemakaian total
+  usageCount: number;            // sudah dipakai berapa kali
+  rules: PromoRule[];            // ← multi-rule per promo
   startDate?: string | null;
   endDate?: string | null;
   isActive: boolean;
   createdAt: string;
 }
 
-const EMPTY_FORM = {
-  name: "",
-  type: "PRODUCT" as PromoType,
-  discountType: "PERCENT" as DiscountType,
-  discountValue: "",
+// ── EMPTY STATES ──────────────────────────────────────────
+const EMPTY_RULE: Omit<PromoRule, "id"> = {
+  type: "PRODUCT",
+  discountType: "PERCENT",
+  discountValue: 0,
   productId: "",
   startTime: "",
   endTime: "",
-  minTransaction: "",
-  startDate: "",
-  endDate: "",
+  minTransaction: 0,
 };
 
+const EMPTY_FORM = {
+  name: "",
+  tag: "",
+  priority: 1,
+  stackable: false,
+  maxUsage: "",
+  startDate: "",
+  endDate: "",
+  rules: [{ ...EMPTY_RULE, id: crypto.randomUUID() }] as (PromoRule & { id: string })[],
+};
+
+// ── HELPERS ───────────────────────────────────────────────
 function formatRupiah(n: number) {
   return "Rp " + n.toLocaleString("id-ID");
 }
@@ -54,11 +74,36 @@ function promoTypeLabel(type: PromoType) {
   return "Min. Transaksi";
 }
 
-function promoTypeBadgeClass(type: PromoType) {
-  if (type === "PRODUCT") return "bg-blue-50 text-blue-600";
-  if (type === "HAPPY_HOUR") return "bg-orange-50 text-orange-600";
-  return "bg-purple-50 text-purple-600";
+function promoTypeIcon(type: PromoType) {
+  if (type === "PRODUCT") return "📦";
+  if (type === "HAPPY_HOUR") return "⏰";
+  return "🧾";
 }
+
+const TAG_OPTIONS = [
+  { value: "", label: "Tanpa Tag" },
+  { value: "red", label: "🔴 Merah" },
+  { value: "orange", label: "🟠 Oranye" },
+  { value: "blue", label: "🔵 Biru" },
+  { value: "green", label: "🟢 Hijau" },
+  { value: "purple", label: "🟣 Ungu" },
+];
+
+const TAG_CLASSES: Record<string, string> = {
+  red: "bg-red-50 text-red-600 border-red-200",
+  orange: "bg-orange-50 text-orange-600 border-orange-200",
+  blue: "bg-blue-50 text-blue-600 border-blue-200",
+  green: "bg-green-50 text-green-600 border-green-200",
+  purple: "bg-purple-50 text-purple-600 border-purple-200",
+};
+
+const TAG_DOT: Record<string, string> = {
+  red: "bg-red-400",
+  orange: "bg-orange-400",
+  blue: "bg-blue-400",
+  green: "bg-green-400",
+  purple: "bg-purple-500",
+};
 
 // ── COMPONENT ─────────────────────────────────────────────
 export default function PromoAdminPage() {
@@ -76,6 +121,7 @@ export default function PromoAdminPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<"ALL" | PromoType>("ALL");
   const [filterActive, setFilterActive] = useState<"ALL" | "active" | "inactive">("ALL");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // ── FETCH ─────────────────────────────────────────────
   async function fetchPromos() {
@@ -110,15 +156,22 @@ export default function PromoAdminPage() {
     setEditTarget(promo);
     setForm({
       name: promo.name,
-      type: promo.type,
-      discountType: promo.discountType,
-      discountValue: String(promo.discountValue),
-      productId: promo.productId ?? "",
-      startTime: promo.startTime ?? "",
-      endTime: promo.endTime ?? "",
-      minTransaction: promo.minTransaction ? String(promo.minTransaction) : "",
+      tag: promo.tag ?? "",
+      priority: promo.priority,
+      stackable: promo.stackable,
+      maxUsage: promo.maxUsage ? String(promo.maxUsage) : "",
       startDate: promo.startDate ? promo.startDate.slice(0, 10) : "",
       endDate: promo.endDate ? promo.endDate.slice(0, 10) : "",
+      rules: promo.rules.map((r) => ({
+        id: r.id,
+        type: r.type,
+        discountType: r.discountType,
+        discountValue: r.discountValue,
+        productId: r.productId ?? "",
+        startTime: r.startTime ?? "",
+        endTime: r.endTime ?? "",
+        minTransaction: r.minTransaction ?? 0,
+      })),
     });
     setShowModal(true);
   }
@@ -129,27 +182,73 @@ export default function PromoAdminPage() {
     setForm(EMPTY_FORM);
   }
 
-  function setF(key: string, val: string) {
+  function setF(key: string, val: any) {
     setForm((prev) => ({ ...prev, [key]: val }));
+  }
+
+  // ── RULE HELPERS ──────────────────────────────────────
+  function addRule() {
+    setForm((prev) => ({
+      ...prev,
+      rules: [...prev.rules, { ...EMPTY_RULE, id: crypto.randomUUID() }],
+    }));
+  }
+
+  function removeRule(ruleId: string) {
+    setForm((prev) => ({
+      ...prev,
+      rules: prev.rules.filter((r) => r.id !== ruleId),
+    }));
+  }
+
+  function setRule(ruleId: string, key: string, val: any) {
+    setForm((prev) => ({
+      ...prev,
+      rules: prev.rules.map((r) => (r.id === ruleId ? { ...r, [key]: val } : r)),
+    }));
+  }
+
+  function moveRuleUp(idx: number) {
+    if (idx === 0) return;
+    setForm((prev) => {
+      const rules = [...prev.rules];
+      [rules[idx - 1], rules[idx]] = [rules[idx], rules[idx - 1]];
+      return { ...prev, rules };
+    });
+  }
+
+  function moveRuleDown(idx: number) {
+    setForm((prev) => {
+      if (idx >= prev.rules.length - 1) return prev;
+      const rules = [...prev.rules];
+      [rules[idx], rules[idx + 1]] = [rules[idx + 1], rules[idx]];
+      return { ...prev, rules };
+    });
   }
 
   // ── SAVE (create / update) ────────────────────────────
   async function handleSave() {
-    if (!form.name.trim() || !form.discountValue) return;
-    if (form.type === "HAPPY_HOUR" && (!form.startTime || !form.endTime)) return;
+    if (!form.name.trim() || form.rules.length === 0) return;
 
     setSaving(true);
     const payload: any = {
       name: form.name.trim(),
-      type: form.type,
-      discountType: form.discountType,
-      discountValue: Number(form.discountValue),
-      productId: form.type === "PRODUCT" && form.productId ? form.productId : null,
-      startTime: form.type === "HAPPY_HOUR" ? form.startTime : null,
-      endTime: form.type === "HAPPY_HOUR" ? form.endTime : null,
-      minTransaction: form.type === "MIN_TRANSACTION" && form.minTransaction ? Number(form.minTransaction) : null,
+      tag: form.tag || null,
+      priority: Number(form.priority),
+      stackable: form.stackable,
+      maxUsage: form.maxUsage ? Number(form.maxUsage) : null,
       startDate: form.startDate || null,
       endDate: form.endDate || null,
+      rules: form.rules.map((r) => ({
+        id: r.id,
+        type: r.type,
+        discountType: r.discountType,
+        discountValue: Number(r.discountValue),
+        productId: r.type === "PRODUCT" && r.productId ? r.productId : null,
+        startTime: r.type === "HAPPY_HOUR" ? r.startTime : null,
+        endTime: r.type === "HAPPY_HOUR" ? r.endTime : null,
+        minTransaction: r.type === "MIN_TRANSACTION" && r.minTransaction ? Number(r.minTransaction) : null,
+      })),
     };
 
     if (editTarget) {
@@ -189,14 +288,17 @@ export default function PromoAdminPage() {
   }
 
   // ── FILTER ────────────────────────────────────────────
-  const filtered = promos.filter((p) => {
-    const matchType = filterType === "ALL" || p.type === filterType;
-    const matchActive =
-      filterActive === "ALL" ||
-      (filterActive === "active" && p.isActive) ||
-      (filterActive === "inactive" && !p.isActive);
-    return matchType && matchActive;
-  });
+  const filtered = promos
+    .filter((p) => {
+      const matchType =
+        filterType === "ALL" || p.rules.some((r) => r.type === filterType);
+      const matchActive =
+        filterActive === "ALL" ||
+        (filterActive === "active" && p.isActive) ||
+        (filterActive === "inactive" && !p.isActive);
+      return matchType && matchActive;
+    })
+    .sort((a, b) => a.priority - b.priority);
 
   // ── RENDER ────────────────────────────────────────────
   return (
@@ -205,14 +307,17 @@ export default function PromoAdminPage() {
       {/* Header */}
       <header className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push("/dashboard")} className="text-gray-400 hover:text-gray-700 transition-colors">
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="text-gray-400 hover:text-gray-700 transition-colors"
+          >
             <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" strokeWidth={1.8} stroke="currentColor">
               <path d="M12 4L6 10l6 6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
           <div>
             <h1 className="text-sm font-semibold text-gray-900">Manajemen Promo</h1>
-            <p className="text-[11px] text-gray-400">{promos.length} promo terdaftar</p>
+            <p className="text-[11px] text-gray-400">{promos.length} promo terdaftar · diurutkan by prioritas</p>
           </div>
         </div>
         <button
@@ -230,7 +335,6 @@ export default function PromoAdminPage() {
 
         {/* Filter bar */}
         <div className="flex flex-wrap gap-2 mb-5">
-          {/* Filter tipe */}
           <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-xs">
             {(["ALL", "PRODUCT", "HAPPY_HOUR", "MIN_TRANSACTION"] as const).map((t) => (
               <button
@@ -242,8 +346,6 @@ export default function PromoAdminPage() {
               </button>
             ))}
           </div>
-
-          {/* Filter status */}
           <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-xs">
             {(["ALL", "active", "inactive"] as const).map((s) => (
               <button
@@ -255,6 +357,14 @@ export default function PromoAdminPage() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Priority legend */}
+        <div className="flex items-center gap-2 mb-4 text-[11px] text-gray-400">
+          <svg viewBox="0 0 14 14" className="w-3 h-3" fill="none" strokeWidth={1.5} stroke="currentColor">
+            <path d="M7 1v12M4 4l3-3 3 3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Promo diurutkan by prioritas — angka lebih kecil = dievaluasi lebih dulu
         </div>
 
         {/* ── PROMO LIST ──────────────────────────────────── */}
@@ -272,12 +382,18 @@ export default function PromoAdminPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {filtered.map((promo) => (
+            {filtered.map((promo, idx) => (
               <div
                 key={promo.id}
                 className={`bg-white rounded-xl border transition-all ${promo.isActive ? "border-gray-200" : "border-gray-100 opacity-60"}`}
               >
+                {/* ── Card header ── */}
                 <div className="px-5 py-4 flex items-center gap-4">
+
+                  {/* Priority badge */}
+                  <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[10px] font-bold text-gray-500">#{promo.priority}</span>
+                  </div>
 
                   {/* Toggle aktif */}
                   <button
@@ -290,11 +406,20 @@ export default function PromoAdminPage() {
 
                   {/* Info promo */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center flex-wrap gap-2 mb-1">
+                      {/* Tag warna */}
+                      {promo.tag && (
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${TAG_DOT[promo.tag] ?? "bg-gray-300"}`} />
+                      )}
                       <p className="text-sm font-medium text-gray-900 truncate">{promo.name}</p>
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${promoTypeBadgeClass(promo.type)}`}>
-                        {promoTypeLabel(promo.type)}
-                      </span>
+
+                      {/* Stackable badge */}
+                      {promo.stackable && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-teal-50 text-teal-600 flex-shrink-0">
+                          ⚡ Stackable
+                        </span>
+                      )}
+
                       {!promo.isActive && (
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 flex-shrink-0">
                           Nonaktif
@@ -302,32 +427,22 @@ export default function PromoAdminPage() {
                       )}
                     </div>
 
-                    {/* Detail promo */}
+                    {/* Meta: aturan count + usage + tanggal */}
                     <div className="flex flex-wrap gap-3 text-[11px] text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <svg viewBox="0 0 14 14" className="w-3 h-3 text-amber-500" fill="none" strokeWidth={1.5} stroke="currentColor">
-                          <path d="M7 1v12M1 7h12" strokeLinecap="round"/>
-                        </svg>
-                        {promo.discountType === "PERCENT"
-                          ? `Diskon ${promo.discountValue}%`
-                          : `Diskon ${formatRupiah(promo.discountValue)}`}
+                      <span
+                        className="cursor-pointer underline underline-offset-2 hover:text-amber-700 transition-colors"
+                        onClick={() => setExpandedId(expandedId === promo.id ? null : promo.id)}
+                      >
+                        {promo.rules.length} aturan diskon
                       </span>
-                      {promo.type === "PRODUCT" && (
+                      {promo.maxUsage && (
                         <span>
-                          {promo.product ? `Produk: ${promo.product.name}` : "Semua produk"}
+                          🔢 {promo.usageCount}/{promo.maxUsage}x dipakai
                         </span>
-                      )}
-                      {promo.type === "HAPPY_HOUR" && (
-                        <span>⏰ {promo.startTime}–{promo.endTime}</span>
-                      )}
-                      {promo.type === "MIN_TRANSACTION" && promo.minTransaction && (
-                        <span>Min. {formatRupiah(promo.minTransaction)}</span>
                       )}
                       {(promo.startDate || promo.endDate) && (
                         <span>
-                          📅 {promo.startDate ? promo.startDate.slice(0, 10) : "—"}
-                          {" s/d "}
-                          {promo.endDate ? promo.endDate.slice(0, 10) : "∞"}
+                          📅 {promo.startDate ? promo.startDate.slice(0, 10) : "—"} s/d {promo.endDate ? promo.endDate.slice(0, 10) : "∞"}
                         </span>
                       )}
                     </div>
@@ -336,12 +451,27 @@ export default function PromoAdminPage() {
                   {/* Aksi */}
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
+                      onClick={() => setExpandedId(expandedId === promo.id ? null : promo.id)}
+                      className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors"
+                      title="Lihat aturan"
+                    >
+                      <svg
+                        viewBox="0 0 16 16"
+                        className={`w-4 h-4 transition-transform ${expandedId === promo.id ? "rotate-180" : ""}`}
+                        fill="none"
+                        strokeWidth={1.5}
+                        stroke="currentColor"
+                      >
+                        <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    <button
                       onClick={() => openEdit(promo)}
                       className="p-2 rounded-lg text-gray-400 hover:text-amber-700 hover:bg-amber-50 transition-colors"
                       title="Edit"
                     >
                       <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5} stroke="currentColor">
-                        <path d="M11.5 2.5l2 2L5 13H3v-2L11.5 2.5z" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M11.5 2.5l2 2L5 13H3v-2L11.5 2.5z" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </button>
                     <button
@@ -350,11 +480,58 @@ export default function PromoAdminPage() {
                       title="Hapus"
                     >
                       <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5} stroke="currentColor">
-                        <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </button>
                   </div>
                 </div>
+
+                {/* ── Expanded: daftar rules ── */}
+                {expandedId === promo.id && (
+                  <div className="px-5 pb-4 border-t border-gray-50 pt-3">
+                    <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-2">Aturan Diskon</p>
+                    <div className="space-y-2">
+                      {promo.rules.map((rule, ri) => (
+                        <div key={rule.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-2.5">
+                          <span className="text-sm">{promoTypeIcon(rule.type)}</span>
+                          <div className="flex-1 text-[11px] text-gray-600">
+                            <span className="font-medium">{promoTypeLabel(rule.type)}</span>
+                            <span className="mx-1.5 text-gray-300">·</span>
+                            {rule.discountType === "PERCENT"
+                              ? `Diskon ${rule.discountValue}%`
+                              : `Diskon ${formatRupiah(rule.discountValue)}`}
+                            {rule.type === "PRODUCT" && rule.product && (
+                              <><span className="mx-1.5 text-gray-300">·</span>{rule.product.name}</>
+                            )}
+                            {rule.type === "HAPPY_HOUR" && (
+                              <><span className="mx-1.5 text-gray-300">·</span>{rule.startTime}–{rule.endTime}</>
+                            )}
+                            {rule.type === "MIN_TRANSACTION" && rule.minTransaction && (
+                              <><span className="mx-1.5 text-gray-300">·</span>Min. {formatRupiah(rule.minTransaction)}</>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-gray-400">#{ri + 1}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Max usage progress bar */}
+                    {promo.maxUsage && (
+                      <div className="mt-3">
+                        <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                          <span>Kuota pemakaian</span>
+                          <span>{promo.usageCount}/{promo.maxUsage}</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-amber-500 rounded-full transition-all"
+                            style={{ width: `${Math.min((promo.usageCount / promo.maxUsage) * 100, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -363,9 +540,12 @@ export default function PromoAdminPage() {
 
       {/* ── MODAL TAMBAH / EDIT ─────────────────────────── */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={closeModal}>
+        <div
+          className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+          onClick={closeModal}
+        >
           <div
-            className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl"
+            className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg overflow-hidden shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal header */}
@@ -375,137 +555,85 @@ export default function PromoAdminPage() {
               </h2>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-700 transition-colors">
                 <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={2} stroke="currentColor">
-                  <path d="M3 3l10 10M13 3L3 13" strokeLinecap="round"/>
+                  <path d="M3 3l10 10M13 3L3 13" strokeLinecap="round" />
                 </svg>
               </button>
             </div>
 
             {/* Modal body */}
-            <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+            <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
 
-              {/* Nama promo */}
+              {/* ── Nama ── */}
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">Nama Promo *</label>
                 <input
                   type="text"
-                  placeholder="Contoh: Happy Hour Sore, Promo Akhir Pekan"
+                  placeholder="Contoh: Paket Hemat Akhir Pekan"
                   value={form.name}
                   onChange={(e) => setF("name", e.target.value)}
                   className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors text-gray-800"
                 />
               </div>
 
-              {/* Tipe promo */}
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1.5 block">Tipe Promo *</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["PRODUCT", "HAPPY_HOUR", "MIN_TRANSACTION"] as PromoType[]).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setF("type", t)}
-                      className={`py-2.5 px-2 rounded-lg border text-[11px] font-medium text-center transition-colors ${
-                        form.type === t
-                          ? "bg-amber-700 border-amber-700 text-white"
-                          : "border-gray-200 text-gray-500 hover:border-gray-300"
-                      }`}
-                    >
-                      {t === "PRODUCT" && "📦 By Produk"}
-                      {t === "HAPPY_HOUR" && "⏰ Happy Hour"}
-                      {t === "MIN_TRANSACTION" && "🧾 Min. Transaksi"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Kondisi tambahan by tipe */}
-              {form.type === "PRODUCT" && (
+              {/* ── Tag warna + Priority + Stackable (1 baris) ── */}
+              <div className="grid grid-cols-3 gap-3">
+                {/* Tag */}
                 <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">Produk yang didiskon</label>
+                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">Tag Warna</label>
                   <select
-                    value={form.productId}
-                    onChange={(e) => setF("productId", e.target.value)}
+                    value={form.tag}
+                    onChange={(e) => setF("tag", e.target.value)}
                     className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors text-gray-800 bg-white"
                   >
-                    <option value="">Semua produk</option>
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name} — {formatRupiah(p.price)}</option>
+                    {TAG_OPTIONS.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
                   </select>
                 </div>
-              )}
 
-              {form.type === "HAPPY_HOUR" && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1.5 block">Jam Mulai *</label>
-                    <input
-                      type="time"
-                      value={form.startTime}
-                      onChange={(e) => setF("startTime", e.target.value)}
-                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors text-gray-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1.5 block">Jam Selesai *</label>
-                    <input
-                      type="time"
-                      value={form.endTime}
-                      onChange={(e) => setF("endTime", e.target.value)}
-                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors text-gray-800"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {form.type === "MIN_TRANSACTION" && (
+                {/* Priority */}
                 <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">Minimum Transaksi (Rp) *</label>
+                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">Prioritas *</label>
                   <input
                     type="number"
-                    placeholder="Contoh: 100000"
-                    value={form.minTransaction}
-                    onChange={(e) => setF("minTransaction", e.target.value)}
+                    min={1}
+                    value={form.priority}
+                    onChange={(e) => setF("priority", Number(e.target.value))}
                     className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors text-gray-800"
                   />
+                  <p className="text-[10px] text-gray-400 mt-1">Lebih kecil = lebih dulu</p>
                 </div>
-              )}
 
-              {/* Tipe & nilai diskon */}
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1.5 block">Tipe Diskon *</label>
-                <div className="flex gap-2 mb-3">
-                  {(["PERCENT", "NOMINAL"] as DiscountType[]).map((d) => (
-                    <button
-                      key={d}
-                      onClick={() => setF("discountType", d)}
-                      className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${
-                        form.discountType === d
-                          ? "bg-amber-700 border-amber-700 text-white"
-                          : "border-gray-200 text-gray-500 hover:border-gray-300"
-                      }`}
-                    >
-                      {d === "PERCENT" ? "% Persen" : "Rp Nominal"}
-                    </button>
-                  ))}
+                {/* Stackable */}
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1.5 block">Stackable?</label>
+                  <button
+                    onClick={() => setF("stackable", !form.stackable)}
+                    className={`w-full py-2.5 text-xs font-medium rounded-lg border transition-colors ${
+                      form.stackable
+                        ? "bg-teal-600 border-teal-600 text-white"
+                        : "border-gray-200 text-gray-500"
+                    }`}
+                  >
+                    {form.stackable ? "⚡ Ya, stackable" : "Tidak"}
+                  </button>
+                  <p className="text-[10px] text-gray-400 mt-1">Bisa digabung promo lain</p>
                 </div>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-                    {form.discountType === "PERCENT" ? "%" : "Rp"}
-                  </span>
-                  <input
-                    type="number"
-                    placeholder={form.discountType === "PERCENT" ? "10 (artinya 10%)" : "10000"}
-                    value={form.discountValue}
-                    onChange={(e) => setF("discountValue", e.target.value)}
-                    className="w-full pl-8 pr-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors text-gray-800"
-                  />
-                </div>
-                {form.discountType === "PERCENT" && Number(form.discountValue) > 100 && (
-                  <p className="text-[11px] text-red-400 mt-1">Persen maksimal 100</p>
-                )}
               </div>
 
-              {/* Masa berlaku */}
+              {/* ── Max Usage ── */}
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">Batas Pemakaian (opsional)</label>
+                <input
+                  type="number"
+                  placeholder="Kosongkan = tidak terbatas"
+                  value={form.maxUsage}
+                  onChange={(e) => setF("maxUsage", e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-amber-400 transition-colors text-gray-800"
+                />
+              </div>
+
+              {/* ── Masa berlaku ── */}
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">Masa Berlaku (opsional)</label>
                 <div className="grid grid-cols-2 gap-3">
@@ -528,7 +656,169 @@ export default function PromoAdminPage() {
                     />
                   </div>
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1">Kosongkan untuk promo tanpa batas waktu</p>
+              </div>
+
+              {/* ── RULES ── */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-gray-600">Aturan Diskon *</label>
+                  <button
+                    onClick={addRule}
+                    className="text-[11px] font-medium text-amber-700 hover:text-amber-800 flex items-center gap-1 transition-colors"
+                  >
+                    <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" strokeWidth={2} stroke="currentColor">
+                      <path d="M6 2v8M2 6h8" strokeLinecap="round" />
+                    </svg>
+                    Tambah Aturan
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {form.rules.map((rule, idx) => (
+                    <div key={rule.id} className="border border-gray-200 rounded-xl p-4 space-y-3">
+
+                      {/* Rule header */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                          Aturan #{idx + 1}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {/* Move up/down */}
+                          <button
+                            onClick={() => moveRuleUp(idx)}
+                            disabled={idx === 0}
+                            className="p-1 text-gray-300 hover:text-gray-600 disabled:opacity-30 transition-colors"
+                          >
+                            <svg viewBox="0 0 12 12" className="w-3.5 h-3.5" fill="none" strokeWidth={2} stroke="currentColor">
+                              <path d="M2 8l4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => moveRuleDown(idx)}
+                            disabled={idx === form.rules.length - 1}
+                            className="p-1 text-gray-300 hover:text-gray-600 disabled:opacity-30 transition-colors"
+                          >
+                            <svg viewBox="0 0 12 12" className="w-3.5 h-3.5" fill="none" strokeWidth={2} stroke="currentColor">
+                              <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </button>
+                          {/* Remove rule */}
+                          {form.rules.length > 1 && (
+                            <button
+                              onClick={() => removeRule(rule.id)}
+                              className="p-1 text-gray-300 hover:text-red-400 transition-colors"
+                            >
+                              <svg viewBox="0 0 12 12" className="w-3.5 h-3.5" fill="none" strokeWidth={2} stroke="currentColor">
+                                <path d="M2 2l8 8M10 2L2 10" strokeLinecap="round" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Tipe promo */}
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(["PRODUCT", "HAPPY_HOUR", "MIN_TRANSACTION"] as PromoType[]).map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => setRule(rule.id, "type", t)}
+                            className={`py-2 px-1 rounded-lg border text-[10px] font-medium text-center transition-colors ${
+                              rule.type === t
+                                ? "bg-amber-700 border-amber-700 text-white"
+                                : "border-gray-200 text-gray-500 hover:border-gray-300"
+                            }`}
+                          >
+                            {promoTypeIcon(t)} {t === "PRODUCT" ? "Produk" : t === "HAPPY_HOUR" ? "Happy Hour" : "Min. Transaksi"}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Kondisi by tipe */}
+                      {rule.type === "PRODUCT" && (
+                        <select
+                          value={rule.productId ?? ""}
+                          onChange={(e) => setRule(rule.id, "productId", e.target.value)}
+                          className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-amber-400 text-gray-800 bg-white"
+                        >
+                          <option value="">Semua produk</option>
+                          {products.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name} — {formatRupiah(p.price)}</option>
+                          ))}
+                        </select>
+                      )}
+
+                      {rule.type === "HAPPY_HOUR" && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <p className="text-[10px] text-gray-400 mb-1">Jam Mulai *</p>
+                            <input
+                              type="time"
+                              value={rule.startTime ?? ""}
+                              onChange={(e) => setRule(rule.id, "startTime", e.target.value)}
+                              className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-amber-400 text-gray-800"
+                            />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-gray-400 mb-1">Jam Selesai *</p>
+                            <input
+                              type="time"
+                              value={rule.endTime ?? ""}
+                              onChange={(e) => setRule(rule.id, "endTime", e.target.value)}
+                              className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-amber-400 text-gray-800"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {rule.type === "MIN_TRANSACTION" && (
+                        <input
+                          type="number"
+                          placeholder="Minimum transaksi (Rp)"
+                          value={rule.minTransaction ?? ""}
+                          onChange={(e) => setRule(rule.id, "minTransaction", e.target.value)}
+                          className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-amber-400 text-gray-800"
+                        />
+                      )}
+
+                      {/* Tipe & nilai diskon */}
+                      <div className="flex gap-2">
+                        {(["PERCENT", "NOMINAL"] as DiscountType[]).map((d) => (
+                          <button
+                            key={d}
+                            onClick={() => setRule(rule.id, "discountType", d)}
+                            className={`flex-1 py-2 rounded-lg border text-[11px] font-medium transition-colors ${
+                              rule.discountType === d
+                                ? "bg-amber-700 border-amber-700 text-white"
+                                : "border-gray-200 text-gray-500 hover:border-gray-300"
+                            }`}
+                          >
+                            {d === "PERCENT" ? "% Persen" : "Rp Nominal"}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                          {rule.discountType === "PERCENT" ? "%" : "Rp"}
+                        </span>
+                        <input
+                          type="number"
+                          placeholder={rule.discountType === "PERCENT" ? "10" : "10000"}
+                          value={rule.discountValue || ""}
+                          onChange={(e) => setRule(rule.id, "discountValue", e.target.value)}
+                          className="w-full pl-8 pr-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-amber-400 text-gray-800"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add rule hint */}
+                <button
+                  onClick={addRule}
+                  className="mt-2 w-full py-2.5 border border-dashed border-gray-200 rounded-xl text-xs text-gray-400 hover:border-amber-300 hover:text-amber-600 transition-colors"
+                >
+                  + Tambah aturan diskon lagi
+                </button>
               </div>
             </div>
 
@@ -542,7 +832,7 @@ export default function PromoAdminPage() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving || !form.name.trim() || !form.discountValue}
+                disabled={saving || !form.name.trim() || form.rules.length === 0}
                 className="flex-1 py-2.5 text-sm font-medium text-white bg-amber-700 rounded-xl hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {saving ? "Menyimpan..." : editTarget ? "Simpan Perubahan" : "Buat Promo"}
@@ -554,15 +844,23 @@ export default function PromoAdminPage() {
 
       {/* ── MODAL KONFIRMASI HAPUS ──────────────────────── */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setDeleteConfirm(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => setDeleteConfirm(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-4 mx-auto">
               <svg viewBox="0 0 24 24" className="w-6 h-6 text-red-500" fill="none" strokeWidth={1.5} stroke="currentColor">
-                <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-gray-900 text-center mb-1">Hapus promo ini?</h3>
-            <p className="text-xs text-gray-500 text-center mb-5">Data promo akan dihapus permanen dan tidak bisa dikembalikan.</p>
+            <p className="text-xs text-gray-500 text-center mb-5">
+              Semua aturan diskon di dalam promo ini akan dihapus permanen.
+            </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setDeleteConfirm(null)}

@@ -26,7 +26,7 @@ model Store {
   products     Product[]
   shifts       Shift[]
   transactions Transaction[]
-  promos       Promo[]       // Relasi ke tabel Promo
+  promos       Promo[]
 }
 
 model Product {
@@ -45,7 +45,7 @@ model Product {
   storeId          String
   store            Store             @relation(fields: [storeId], references: [id])
   transactionItems TransactionItem[]
-  promos           Promo[]           // Relasi ke Promo (khusus tipe PRODUCT)
+  promoRules       PromoRule[]       // ← ganti dari promos Promo[] ke PromoRule[]
 }
 
 model TransactionItem {
@@ -72,14 +72,14 @@ model Transaction {
   id             String            @id @default(uuid())
   storeId        String
   total          Int
-  discountAmount Int               @default(0) // Jumlah diskon yang dipotong
+  discountAmount Int               @default(0)
   paymentMethod  String            @default("cash")
   createdAt      DateTime          @default(now())
   store          Store             @relation(fields: [storeId], references: [id])
   items          TransactionItem[]
   shiftId        String
   shift          Shift             @relation(fields: [shiftId], references: [id])
-  promoId        String?           // Promo yang dipakai (opsional)
+  promoId        String?           // tetap ada — menyimpan promo utama yang dipakai
   promo          Promo?            @relation(fields: [promoId], references: [id])
 }
 
@@ -102,36 +102,62 @@ model Shift {
 }
 
 // ============================================================
-// MODEL BARU: Promo
+// MODEL Promo — diperbarui untuk multi-rule
 // ============================================================
 model Promo {
-  id             String    @id @default(uuid())
-  storeId        String
-  name           String
-  // Tipe promo: PRODUCT | HAPPY_HOUR | MIN_TRANSACTION
-  type           String
-  // Tipe diskon: PERCENT | NOMINAL
-  discountType   String
-  // Nilai diskon: 10 = 10% (jika PERCENT) atau 10000 = Rp10.000 (jika NOMINAL)
-  discountValue  Int
+  id          String      @id @default(uuid())
+  storeId     String
+  name        String
 
-  // Untuk tipe PRODUCT — kosong = berlaku semua produk di toko
-  productId      String?
+  // ── Field baru ──────────────────────────────────────────
+  tag         String?     // label warna: "red"|"orange"|"blue"|"green"|"purple"
+  priority    Int         @default(1)    // urutan evaluasi; lebih kecil = lebih dulu
+  stackable   Boolean     @default(false) // bisa digabung dengan promo lain?
+  maxUsage    Int?        // null = tidak terbatas
+  usageCount  Int         @default(0)    // counter pemakaian
+  // ────────────────────────────────────────────────────────
 
-  // Untuk tipe HAPPY_HOUR — format "HH:mm"
-  startTime      String?   // contoh: "14:00"
-  endTime        String?   // contoh: "17:00"
-
-  // Untuk tipe MIN_TRANSACTION
-  minTransaction Int?      // contoh: 100000 = minimum belanja Rp100.000
-
-  // Masa berlaku
-  startDate      DateTime?
-  endDate        DateTime?
-  isActive       Boolean   @default(true)
-  createdAt      DateTime  @default(now())
+  startDate   DateTime?
+  endDate     DateTime?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
 
   store        Store         @relation(fields: [storeId], references: [id])
-  product      Product?      @relation(fields: [productId], references: [id])
+  rules        PromoRule[]   // ← aturan diskon (ganti field lama yang flat)
   transactions Transaction[]
+
+  @@index([storeId])
+  @@index([priority])
+}
+
+// ============================================================
+// MODEL BARU: PromoRule — 1 promo bisa punya banyak aturan
+// ============================================================
+model PromoRule {
+  id            String  @id @default(uuid())
+  promoId       String
+  order         Int     @default(0) // urutan rule dalam promo
+
+  // Tipe aturan: PRODUCT | HAPPY_HOUR | MIN_TRANSACTION
+  type          String
+  // Tipe diskon: PERCENT | NOMINAL
+  discountType  String
+  // Nilai diskon
+  discountValue Int
+
+  // Untuk tipe PRODUCT
+  productId     String?
+  product       Product? @relation(fields: [productId], references: [id])
+
+  // Untuk tipe HAPPY_HOUR — format "HH:mm"
+  startTime     String?
+  endTime       String?
+
+  // Untuk tipe MIN_TRANSACTION
+  minTransaction Int?
+
+  promo         Promo   @relation(fields: [promoId], references: [id], onDelete: Cascade)
+
+  @@index([promoId])
+  @@index([order])
 }

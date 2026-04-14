@@ -55,6 +55,24 @@ export async function POST(req: Request) {
         }
       }
 
+      if (promoId) {
+  const promo = await tx.promo.findUnique({
+    where: { id: promoId },
+  });
+
+  if (!promo) {
+    throw new Error("Promo tidak ditemukan");
+  }
+
+  if (!promo.isActive) {
+    throw new Error("Promo tidak aktif");
+  }
+
+  if (promo.maxUsage && promo.usageCount >= promo.maxUsage) {
+    throw new Error("Promo sudah mencapai batas penggunaan");
+  }
+}
+
       // 🔥 2. BUAT TRANSAKSI
       const transaction = await tx.transaction.create({
         data: {
@@ -74,6 +92,16 @@ export async function POST(req: Request) {
         },
         include: { items: true },
       });
+
+      // 🔥 2.5 UPDATE PROMO USAGE
+if (promoId) {
+  await tx.promo.update({
+    where: { id: promoId },
+    data: {
+      usageCount: { increment: 1 },
+    },
+  });
+} 
 
       // 🔥 3. UPDATE SHIFT
       await tx.shift.update({
@@ -120,17 +148,22 @@ export async function GET(req: Request) {
         },
       }),
     },
-    include: {
-      items: true,
-      promo: {
+include: {
+  items: true,
+  promo: {
+    select: {
+      id: true,
+      name: true,
+      rules: {
+        take: 1, // ambil rule pertama aja
         select: {
-          id: true,
-          name: true,
           discountType: true,
           discountValue: true,
         },
       },
     },
+  },
+},
     orderBy: { createdAt: "desc" },
   });
 

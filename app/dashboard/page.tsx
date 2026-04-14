@@ -3,6 +3,15 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  AreaChart, Area
+} from "recharts";
 
 // Tipe data internal dashboard
 interface DashTxn { item: string; time: string; qty: number; amount: number; }
@@ -150,6 +159,49 @@ export default function DashboardPage() {
   const stokWarn = stockList.filter((p) => p.status === "warn").length;
   const maxSales = Math.max(...salesData, 1);
 
+  const chartData = salesLabels.map((label, i) => ({
+    name: label,
+    omzet: salesData[i],
+  }));
+
+  const CustomLine = (props: any) => {
+    const { points } = props;
+    if (!points || points.length < 2) return null;
+
+    const segments = [];
+
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+
+      const isUp = curr.value >= prev.value;
+
+      // bikin curve (quadratic bezier)
+      const midX = (prev.x + curr.x) / 2;
+      const midY = (prev.y + curr.y) / 2;
+
+      const path = `
+  M ${prev.x} ${prev.y}
+  C ${midX} ${prev.y},
+    ${midX} ${curr.y},
+    ${curr.x} ${curr.y}
+`;
+
+      segments.push(
+        <path
+          key={i}
+          d={path}
+          fill="none"
+          stroke={isUp ? "#22c55e" : "#ef4444"}
+          strokeWidth={3}
+          strokeLinecap="round"
+        />
+      );
+    }
+
+    return <g>{segments}</g>;
+  };
+
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -198,24 +250,41 @@ export default function DashboardPage() {
               <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">
                 PENJUALAN 7 HARI TERAKHIR
               </p>
-              <div className="flex items-end gap-2 h-36">
-                {salesData.map((val, i) => {
-                  const isToday = i === 6;
-                  const heightPct = Math.max(Math.round((val / maxSales) * 100), val > 0 ? 4 : 0);
-                  return (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <div className="w-full flex items-end justify-center" style={{ height: "112px" }}>
-                        <div
-                          className={`w-full rounded-t-md transition-all ${isToday ? "bg-amber-700" : "bg-amber-200"}`}
-                          style={{ height: `${heightPct}%` }}
-                        />
-                      </div>
-                      <span className="text-[9px] text-gray-400 whitespace-nowrap">
-                        {salesLabels[i]?.split(" ")[0]}
-                      </span>
-                    </div>
-                  );
-                })}
+              <div className="w-full h-40">
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+
+                    <CartesianGrid strokeDasharray="3 3" />
+
+                    <XAxis
+                      dataKey="name"
+                      fontSize={10}
+                      tick={{ fill: "#9ca3af" }}
+                    />
+
+                    <Tooltip
+                      formatter={(value) => formatRupiah(Number(value))}
+                      labelFormatter={(label) => `Tanggal: ${label}`}
+                      contentStyle={{
+                        backgroundColor: "#111827",
+                        border: "none",
+                        borderRadius: "10px"
+                      }}
+                      labelStyle={{ color: "#e5e7eb" }}
+                      itemStyle={{ color: "#f59e0b" }}
+                    />
+
+                    {/* 🔥 LINE CUSTOM */}
+                    <Line
+                      type="monotone"
+                      dataKey="omzet"
+                      stroke="none"
+                      dot={false}
+                      shape={(props) => <CustomLine {...props} />}
+                    />
+
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
             </div>
 

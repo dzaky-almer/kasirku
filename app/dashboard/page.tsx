@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { formatDateInput, shiftDateInput } from "@/lib/date";
 import {
   AreaChart,
   Area,
@@ -77,13 +78,10 @@ export default function DashboardPage() {
     if (status === "loading") return;
     if (!storeId) return;
 
-    const today = new Date().toISOString().split("T")[0];
-
-    const last7Dates = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return d.toISOString().split("T")[0];
-    });
+    const today = formatDateInput(new Date());
+    const last7Dates = Array.from({ length: 7 }, (_, i) =>
+      shiftDateInput(today, -(6 - i))
+    );
 
     Promise.all(
       last7Dates.map((date) =>

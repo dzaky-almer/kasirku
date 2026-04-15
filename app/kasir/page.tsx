@@ -182,14 +182,16 @@ export default function KasirPage() {
   }, [storeId]);
 
   useEffect(() => {
-    fetch("/api/shifts/current")
+    if (!storeId) return;
+
+    fetch(`/api/shifts/current?storeId=${storeId}`)
       .then(async (res) => {
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error();
         setShift(data);
       })
       .catch(() => setShift(null));
-  }, []);
+  }, [storeId]);
 
   useEffect(() => {
     if (!storeId) return;

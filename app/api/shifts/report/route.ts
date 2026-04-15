@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { formatDateInput, getDateRangeForDay } from "@/lib/date";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -9,11 +10,11 @@ export async function GET(req: Request) {
   const date     = searchParams.get("date");
 
   // 🔹 Resolve range
-  const from = dateFrom ?? date ?? new Date().toISOString().split("T")[0];
-  const to   = dateTo   ?? date ?? new Date().toISOString().split("T")[0];
+  const from = dateFrom ?? date ?? formatDateInput(new Date());
+  const to = dateTo ?? date ?? formatDateInput(new Date());
 
-  const start = new Date(`${from}T00:00:00.000Z`);
-  const end   = new Date(`${to}T23:59:59.999Z`);
+  const start = getDateRangeForDay(from).start;
+  const end = getDateRangeForDay(to).end;
 
   const shifts = await prisma.shift.findMany({
     where: {

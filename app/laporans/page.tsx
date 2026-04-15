@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { formatDateInput } from "@/lib/date";
 import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -42,7 +43,7 @@ function fmt(n: number) {
   return "Rp " + n.toLocaleString("id-ID");
 }
 function fmtFull(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
-function toInput(d: Date) { return d.toISOString().split("T")[0]; }
+function toInput(d: Date) { return formatDateInput(d); }
 
 function getRange(mode: Mode): { from: string; to: string } {
   const today = new Date();

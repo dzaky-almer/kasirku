@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { formatDateInput } from "@/lib/date";
 import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -59,7 +60,7 @@ function fmtFull(n: number) {
   return "Rp " + n.toLocaleString("id-ID");
 }
 function toInput(d: Date) {
-  return d.toISOString().split("T")[0];
+  return formatDateInput(d);
 }
 
 // Custom tooltip untuk chart harian

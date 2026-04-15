@@ -1,16 +1,19 @@
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   try {
+    const session = await auth();
+    const sessionUserId = session?.user?.id;
     const body = await req.json();
-    const { opening_cash, userId, storeId, cashierName } = body;
+    const { opening_cash, storeId, cashierName } = body;
 
-    // 🔒 VALIDASI
-    if (!userId || !storeId) {
-      return Response.json(
-        { error: "userId & storeId wajib" },
-        { status: 400 }
-      );
+    if (!sessionUserId) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!storeId) {
+      return Response.json({ error: "storeId wajib" }, { status: 400 });
     }
 
     if (!opening_cash || opening_cash < 0) {
@@ -27,10 +30,25 @@ export async function POST(req: Request) {
       );
     }
 
-    // 🔥 CEK SHIFT AKTIF (PER USER)
+    const store = await prisma.store.findFirst({
+      where: {
+        id: storeId,
+        userId: sessionUserId,
+      },
+      select: { id: true },
+    });
+
+    if (!store) {
+      return Response.json(
+        { error: "Store tidak ditemukan atau bukan milik akun ini" },
+        { status: 403 }
+      );
+    }
+
     const existing = await prisma.shift.findFirst({
       where: {
-        userId,
+        userId: sessionUserId,
+        storeId,
         status: "OPEN",
       },
     });
@@ -42,19 +60,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ CREATE SHIFT
     const shift = await prisma.shift.create({
       data: {
         opening_cash,
-        cashierName, 
+        cashierName,
         status: "OPEN",
-        userId,
+        userId: sessionUserId,
         storeId,
       },
     });
 
     return Response.json(shift, { status: 201 });
-
   } catch (err) {
     console.error("OPEN SHIFT ERROR:", err);
 

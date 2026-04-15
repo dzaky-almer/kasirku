@@ -24,8 +24,14 @@ export default function ShiftsPage() {
 
   // 🔥 FETCH SHIFT AKTIF
   const fetchShift = async () => {
+    const storeId = (session?.user as { storeId?: string } | undefined)?.storeId;
+    if (!storeId) {
+      setOpenShift(null);
+      return;
+    }
+
     try {
-      const res = await fetch("/api/shifts/current");
+      const res = await fetch(`/api/shifts/current?storeId=${storeId}`);
       const data = await res.json();
       setOpenShift(data?.id ? data : null);
     } catch (err) {
@@ -37,7 +43,7 @@ export default function ShiftsPage() {
     if (status === "authenticated") {
       fetchShift();
     }
-  }, [status]);
+  }, [status, session]);
 
   // 🟢 OPEN SHIFT
   const handleOpenShift = async () => {

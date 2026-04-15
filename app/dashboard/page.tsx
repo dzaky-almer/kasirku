@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { formatDateInput, shiftDateInput } from "@/lib/date";
 import {
   AreaChart,
   Area,
@@ -17,11 +16,42 @@ import {
 interface DashTxn { item: string; time: string; qty: number; amount: number; }
 interface DashStock { name: string; stock: number; unit: string; status: string; }
 interface DashTop { name: string; sold: number; revenue: number; }
+interface ChartPoint {
+  name: string;
+  omzet: number;
+}
+interface DashboardSummaryResponse {
+  salesData?: number[];
+  recentTransactions?: DashTxn[];
+  stockList?: DashStock[];
+  topProducts?: DashTop[];
+  todaySummary?: {
+    totalTransactions: number;
+    totalItems: number;
+    totalOmzet: number;
+  };
+}
 
 const emptyTxn: DashTxn[] = [];
 const emptyStock: DashStock[] = [];
 const emptyTop: DashTop[] = [];
 const emptySales = [0, 0, 0, 0, 0, 0, 0];
+
+interface TooltipPayloadItem {
+  value?: number;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+  label?: string;
+}
+
+interface CustomDotProps {
+  cx?: number;
+  cy?: number;
+  index?: number;
+}
 
 function getLast7Labels(): string[] {
   return Array.from({ length: 7 }, (_, i) => {
@@ -43,7 +73,27 @@ function getToday(): string {
   });
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+function renderCustomDot(props: CustomDotProps, chartData: ChartPoint[]) {
+  const { cx, cy, index } = props;
+  if (cx == null || cy == null || index == null) return null;
+  if (index === 0) {
+    return <circle cx={cx} cy={cy} r={5} fill="#BA7517" stroke="#fff" strokeWidth={2.5} />;
+  }
+
+  const isUp = chartData[index].omzet >= chartData[index - 1].omzet;
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={5}
+      fill={isUp ? "#16a34a" : "#dc2626"}
+      stroke="#fff"
+      strokeWidth={2.5}
+    />
+  );
+}
+
+const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (!active || !payload || !payload.length) return null;
   return (
     <div style={{
@@ -64,13 +114,17 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export default function DashboardPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const storeId = (session?.user as any)?.storeId ?? "";
+  const storeId = session?.user?.storeId ?? "";
 
   const [recentTxns, setRecentTxns] = useState<DashTxn[]>(emptyTxn);
   const [stockList, setStockList] = useState<DashStock[]>(emptyStock);
   const [topProducts, setTopProducts] = useState<DashTop[]>(emptyTop);
   const [salesData, setSalesData] = useState<number[]>(emptySales);
-  const [allTodayTxns, setAllTodayTxns] = useState<any[]>([]);
+  const [todaySummary, setTodaySummary] = useState({
+    totalTransactions: 0,
+    totalItems: 0,
+    totalOmzet: 0,
+  });
   const salesLabels = getLast7Labels();
   const [loading, setLoading] = useState(true);
 
@@ -78,106 +132,35 @@ export default function DashboardPage() {
     if (status === "loading") return;
     if (!storeId) return;
 
-    const today = formatDateInput(new Date());
-    const last7Dates = Array.from({ length: 7 }, (_, i) =>
-      shiftDateInput(today, -(6 - i))
-    );
-
-    Promise.all(
-      last7Dates.map((date) =>
-        fetch(`/api/transactions?storeId=${storeId}&date=${date}`)
-          .then((r) => r.json())
-          .then((data: any[]) => {
-            if (!Array.isArray(data)) return 0;
-            return data.reduce((sum, t) => sum + (t.total ?? 0), 0);
-          })
-          .catch(() => 0)
-      )
-    ).then((revenues) => {
-      setSalesData(revenues);
-
-      fetch(`/api/transactions?storeId=${storeId}&date=${today}`)
-        .then((r) => r.json())
-        .then((data: any[]) => {
-          if (!Array.isArray(data)) return;
-          setAllTodayTxns(data);
-          const recent = data.slice(0, 5).map((t) => ({
-            item: t.items?.length > 0 ? `${t.items[0].qty}x item` : `Transaksi`,
-            time: new Date(t.createdAt).toLocaleTimeString("id-ID", {
-              hour: "2-digit", minute: "2-digit",
-            }),
-            qty: (t.items as any[])?.reduce((s: number, i: any) => s + i.qty, 0) ?? 0,
-            amount: t.total,
-          }));
-          setRecentTxns(recent);
-        })
-        .catch(console.error);
-    });
-
-    fetch(`/api/products?storeId=${storeId}`)
+    fetch(`/api/dashboard/summary?storeId=${storeId}`)
       .then((r) => r.json())
-      .then((data: any[]) => {
-        if (!Array.isArray(data)) return;
-        const stocks = data.map((p) => ({
-          name: p.name,
-          stock: p.stock,
-          unit: p.unit ?? "pcs",
-          status: p.stock <= (p.minStock ?? 5) ? "warn" : "ok",
-        }));
-        setStockList(stocks);
-      })
-      .catch(console.error);
-
-    fetch(`/api/reports?storeId=${storeId}&date=${today}`)
-      .then((r) => r.json())
-      .then((data: any) => {
-        if (Array.isArray(data.transactions)) {
-          const productMap: Record<string, { name: string; sold: number; revenue: number }> = {};
-          for (const trx of data.transactions) {
-            for (const item of trx.items ?? []) {
-              const key = item.productId;
-              if (!productMap[key]) {
-                productMap[key] = { name: item.product?.name ?? item.productId, sold: 0, revenue: 0 };
-              }
-              productMap[key].sold += item.qty;
-              productMap[key].revenue += item.qty * item.price;
-            }
+      .then((data: DashboardSummaryResponse) => {
+        setSalesData(data.salesData ?? emptySales);
+        setRecentTxns(data.recentTransactions ?? emptyTxn);
+        setStockList(data.stockList ?? emptyStock);
+        setTopProducts(data.topProducts ?? emptyTop);
+        setTodaySummary(
+          data.todaySummary ?? {
+            totalTransactions: 0,
+            totalItems: 0,
+            totalOmzet: 0,
           }
-          const tops = Object.values(productMap)
-            .sort((a, b) => b.sold - a.sold)
-            .slice(0, 5);
-          setTopProducts(tops);
-        }
+        );
       })
       .catch(console.error)
       .finally(() => setLoading(false));
 
   }, [storeId, status]);
 
-  const totalOmzet = salesData[6];
-  const totalTxn = allTodayTxns.length;
-  const totalItemTerjual = recentTxns.reduce((a, t) => a + t.qty, 0);
+  const totalOmzet = todaySummary.totalOmzet;
+  const totalTxn = todaySummary.totalTransactions;
+  const totalItemTerjual = todaySummary.totalItems;
   const stokWarn = stockList.filter((p) => p.status === "warn").length;
 
-  const chartData = salesLabels.map((label, i) => ({
+  const chartData: ChartPoint[] = salesLabels.map((label, i) => ({
     name: label,
     omzet: salesData[i],
   }));
-
-  const CustomDot = (props: any) => {
-    const { cx, cy, index } = props;
-    if (cx == null || cy == null) return null;
-    if (index === 0) {
-      return <circle cx={cx} cy={cy} r={5} fill="#BA7517" stroke="#fff" strokeWidth={2.5} />;
-    }
-    const isUp = chartData[index].omzet >= chartData[index - 1].omzet;
-    return (
-      <circle cx={cx} cy={cy} r={5}
-        fill={isUp ? "#16a34a" : "#dc2626"}
-        stroke="#fff" strokeWidth={2.5}
-      />
-    );
-  };
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -186,7 +169,7 @@ export default function DashboardPage() {
           <span className="text-sm font-medium text-gray-900">Dashboard</span>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
-              {(session?.user as any)?.email ?? "Kopi Nusantara"}
+              {session?.user?.email ?? "Kopi Nusantara"}
             </span>
             <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
               {getToday()}
@@ -291,7 +274,7 @@ export default function DashboardPage() {
                       stroke="#BA7517"
                       strokeWidth={2.5}
                       fill="url(#omzetFill)"
-                      dot={<CustomDot />}
+                      dot={(props) => renderCustomDot(props, chartData)}
                       activeDot={{ r: 7, fill: "#f59e0b", stroke: "#fff", strokeWidth: 2.5 }}
                       isAnimationActive={true}
                       animationDuration={900}

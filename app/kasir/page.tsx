@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Script from "next/script";
@@ -38,13 +38,39 @@ interface Promo {
   rules: PromoRule[];
 }
 
+interface PromoPreview {
+  amount: number;
+  valid: boolean;
+  reason?: string;
+}
+
 function formatRupiah(amount: number): string {
   if (amount == null || isNaN(amount)) return "Rp 0";
   return "Rp " + amount.toLocaleString("id-ID");
 }
 
 declare global {
-  interface Window { snap: any; }
+  interface Window {
+    snap: {
+      pay: (
+        token: string,
+        callbacks: {
+          onSuccess?: () => void;
+          onPending?: () => void;
+          onError?: () => void;
+          onClose?: () => void;
+        }
+      ) => void;
+    };
+  }
+}
+
+interface TransactionResult {
+  id: string;
+}
+
+interface CurrentShift {
+  id: string;
 }
 
 // ── HELPER: validasi & hitung diskon (multi-rule) ────────────
@@ -138,7 +164,7 @@ function promoDiscLabel(promo: Promo): string {
 export default function KasirPage() {
   const router = useRouter();
   const { data: session } = useSession();
-  const storeId = (session?.user as any)?.storeId ?? "";
+  const storeId = session?.user?.storeId ?? "";
   const userId = session?.user?.id ?? "";
   const strutRef = useRef<HTMLDivElement>(null);
 
@@ -156,14 +182,14 @@ export default function KasirPage() {
   const [activeCategory, setActiveCategory] = useState("Semua");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [paid, setPaid] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "qris">("cash");
   const [qrisLoading, setQrisLoading] = useState(false);
-  const [showStruk, setShowStruk] = useState(false);
-  const [lastTransaction, setLastTransaction] = useState<any>(null);
-  const [shift, setShift] = useState<any>(null);
+  const [lastTransaction, setLastTransaction] = useState<TransactionResult | null>(null);
+  const [shift, setShift] = useState<CurrentShift | null>(null);
 
   // ── STATE PROMO ──────────────────────────────────────────
   const [promos, setPromos] = useState<Promo[]>([]);
@@ -206,22 +232,44 @@ export default function KasirPage() {
   // ── KALKULASI ────────────────────────────────────────────
   const subtotal = cart.reduce((sum, c) => sum + (c.price ?? 0) * c.qty, 0);
   const tax = Math.round(subtotal * 0.1);
+  const totalBeforeDiscount = subtotal + tax;
+
+  const cartByProductId = useMemo(
+    () => new Map(cart.map((item) => [item.id, item])),
+    [cart]
+  );
 
   const promoResult = useMemo(() => {
     if (!selectedPromo) return { amount: 0, valid: false };
-    return calcDiscount(selectedPromo, cart, subtotal + tax);
-  }, [selectedPromo, cart, subtotal, tax]);
+    return calcDiscount(selectedPromo, cart, totalBeforeDiscount);
+  }, [selectedPromo, cart, totalBeforeDiscount]);
+
+  const promoPreviews = useMemo(() => {
+    const previews = new Map<string, PromoPreview>();
+    for (const promo of promos) {
+      previews.set(promo.id, calcDiscount(promo, cart, totalBeforeDiscount));
+    }
+    return previews;
+  }, [promos, cart, totalBeforeDiscount]);
 
   const discount = promoResult.valid ? promoResult.amount : 0;
-  const total = Math.max(0, subtotal + tax - discount);
+  const total = Math.max(0, totalBeforeDiscount - discount);
   const paidNum = parseInt(paid.replace(/\D/g, "")) || 0;
   const kembalian = paidNum - total;
 
-  const filtered = products.filter((p) => {
-    const matchCat = activeCategory === "Semua" || p.category === activeCategory;
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
-    return matchCat && matchSearch;
-  });
+  const filtered = useMemo(() => {
+    const normalizedSearch = deferredSearch.trim().toLowerCase();
+
+    return products.filter((product) => {
+      const matchCat =
+        activeCategory === "Semua" || product.category === activeCategory;
+      const matchSearch =
+        normalizedSearch === "" ||
+        product.name.toLowerCase().includes(normalizedSearch);
+
+      return matchCat && matchSearch;
+    });
+  }, [products, activeCategory, deferredSearch]);
 
   function addToCart(product: Product) {
     setCart((prev) => {
@@ -257,7 +305,6 @@ export default function KasirPage() {
     setCart([]);
     setPaid("");
     setSuccess(false);
-    setShowStruk(false);
     setPaymentMethod("cash");
     setSelectedPromo(null);
     setShowPromoPanel(false);
@@ -426,7 +473,6 @@ export default function KasirPage() {
       const ok = await saveTransaction("cash");
       if (!ok) { setLoading(false); return; }
       setSuccess(true);
-      setShowStruk(true);
       setTimeout(() => printStruk(), 400);
       setLoading(false);
       return;
@@ -452,7 +498,6 @@ export default function KasirPage() {
           const ok = await saveTransaction("qris");
           if (!ok) { setQrisLoading(false); return; }
           setSuccess(true);
-          setShowStruk(true);
           setTimeout(() => printStruk(), 400);
           setQrisLoading(false);
         },
@@ -546,7 +591,7 @@ export default function KasirPage() {
             ) : (
               <div className="grid grid-cols-4 gap-2">
                 {filtered.map((product) => {
-                  const inCart = cart.find((c) => c.id === product.id);
+                  const inCart = cartByProductId.get(product.id);
                   return (
                     <button
                       key={product.id}
@@ -713,7 +758,10 @@ export default function KasirPage() {
                           </button>
 
                           {promos.map((promo) => {
-                            const preview = calcDiscount(promo, cart, subtotal + tax);
+                            const preview = promoPreviews.get(promo.id) ?? {
+                              amount: 0,
+                              valid: false,
+                            };
                             const discLabel = promoDiscLabel(promo);
                             const isSelected = selectedPromo?.id === promo.id;
 

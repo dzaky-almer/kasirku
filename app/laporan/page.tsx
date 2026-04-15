@@ -1,16 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { formatDateInput } from "@/lib/date";
 import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
-  AreaChart, Area,
-  BarChart, Bar,
-  XAxis, YAxis,
-  Tooltip, CartesianGrid,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
   ResponsiveContainer,
 } from "recharts";
 
@@ -20,33 +24,76 @@ interface TxnItem {
   price: number;
   product?: { name: string };
 }
+
 interface Transaction {
   id: string;
   total: number;
   createdAt: string;
   items: TxnItem[];
 }
+
 interface Summary {
   totalRevenue: number;
   totalTransactions: number;
   totalItems: number;
   avgTransaction: number;
 }
+
 interface TopProduct {
   productId: string;
   name: string;
   qty: number;
   revenue: number;
 }
+
 interface DailyChart {
   date: string;
   revenue: number;
   transactions: number;
 }
+
 interface HourChart {
   hour: number;
   label: string;
   count: number;
+}
+
+interface ReportRow {
+  no: number;
+  waktu: string;
+  tanggal: string;
+  idTrx: string;
+  namaProduk: string;
+  qty: number;
+  harga: number;
+  subtotal: number;
+}
+
+interface DailyChartPoint {
+  name: string;
+  omzet: number;
+  transaksi: number;
+}
+
+interface HourChartPoint {
+  name: string;
+  count: number;
+}
+
+interface TooltipPayloadItem {
+  value?: number;
+}
+
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+  label?: string;
+}
+
+interface DotProps {
+  cx?: number;
+  cy?: number;
+  index?: number;
 }
 
 type Mode = "harian" | "mingguan" | "bulanan" | "custom";
@@ -56,46 +103,74 @@ function fmt(n: number) {
   if (n >= 1_000) return `Rp ${Math.round(n / 1_000)}rb`;
   return `Rp ${n.toLocaleString("id-ID")}`;
 }
+
 function fmtFull(n: number) {
   return "Rp " + n.toLocaleString("id-ID");
 }
+
 function toInput(d: Date) {
   return formatDateInput(d);
 }
 
-// Custom tooltip untuk chart harian
-const DailyTooltip = ({ active, payload, label }: any) => {
+function getLastAutoTableY(doc: jsPDF) {
+  return (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
+}
+
+function renderDailyDot(props: DotProps, dailyChartData: DailyChartPoint[]) {
+  const { cx, cy, index } = props;
+  if (cx == null || cy == null || index == null) return <g />;
+  if (index === 0 || index >= dailyChartData.length) {
+    return <circle cx={cx} cy={cy} r={4} fill="#BA7517" stroke="#fff" strokeWidth={2} />;
+  }
+
+  const isUp = dailyChartData[index].omzet >= dailyChartData[index - 1].omzet;
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4}
+      fill={isUp ? "#16a34a" : "#dc2626"}
+      stroke="#fff"
+      strokeWidth={2}
+    />
+  );
+}
+
+const DailyTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (!active || !payload || !payload.length) return null;
   return (
-    <div style={{
-      backgroundColor: "#111827",
-      border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: "10px",
-      fontSize: "12px",
-      padding: "10px 14px",
-    }}>
+    <div
+      style={{
+        backgroundColor: "#111827",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: "10px",
+        fontSize: "12px",
+        padding: "10px 14px",
+      }}
+    >
       <p style={{ color: "#9ca3af", margin: "0 0 4px 0" }}>{label}</p>
       <p style={{ color: "#f59e0b", margin: 0, fontWeight: 600, fontSize: "13px" }}>
-        {fmt(payload[0].value as number)}
+        {fmt(payload[0].value ?? 0)}
       </p>
     </div>
   );
 };
 
-// Custom tooltip untuk peak hour
-const HourTooltip = ({ active, payload, label }: any) => {
+const HourTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (!active || !payload || !payload.length) return null;
   return (
-    <div style={{
-      backgroundColor: "#111827",
-      border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: "10px",
-      fontSize: "12px",
-      padding: "8px 12px",
-    }}>
+    <div
+      style={{
+        backgroundColor: "#111827",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: "10px",
+        fontSize: "12px",
+        padding: "8px 12px",
+      }}
+    >
       <p style={{ color: "#9ca3af", margin: "0 0 2px 0" }}>Jam {label}:00</p>
       <p style={{ color: "#f59e0b", margin: 0, fontWeight: 600 }}>
-        {payload[0].value} transaksi
+        {payload[0].value ?? 0} transaksi
       </p>
     </div>
   );
@@ -103,7 +178,7 @@ const HourTooltip = ({ active, payload, label }: any) => {
 
 export default function LaporanPage() {
   const { data: session, status } = useSession();
-  const storeId = (session?.user as any)?.storeId ?? "";
+  const storeId = session?.user?.storeId ?? "";
 
   const [mode, setMode] = useState<Mode>("harian");
   const [dateFrom, setDateFrom] = useState(toInput(new Date()));
@@ -136,37 +211,55 @@ export default function LaporanPage() {
 
   useEffect(() => {
     if (status === "loading" || !storeId) return;
-    fetchLaporan();
+
+    let cancelled = false;
+
+    async function loadReport() {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await fetch(
+          `/api/reports?storeId=${storeId}&dateFrom=${dateFrom}&dateTo=${dateTo}`
+        );
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        if (cancelled) return;
+        setTransactions(data.transactions ?? []);
+        setSummary(data.summary ?? null);
+        setTopProducts(data.topProducts ?? []);
+        setDailyChart(data.dailyChart ?? []);
+        setHourChart(data.hourChart ?? []);
+      } catch {
+        if (!cancelled) {
+          setError("Gagal memuat laporan.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadReport();
+
+    return () => {
+      cancelled = true;
+    };
   }, [storeId, status, dateFrom, dateTo]);
 
-  async function fetchLaporan() {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch(
-        `/api/reports?storeId=${storeId}&dateFrom=${dateFrom}&dateTo=${dateTo}`
-      );
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setTransactions(data.transactions ?? []);
-      setSummary(data.summary ?? null);
-      setTopProducts(data.topProducts ?? []);
-      setDailyChart(data.dailyChart ?? []);
-      setHourChart(data.hourChart ?? []);
-    } catch {
-      setError("Gagal memuat laporan.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function buildRows() {
+  const rows = useMemo(() => {
     let no = 1;
-    return transactions.flatMap((trx) =>
+    return transactions.flatMap<ReportRow>((trx) =>
       trx.items.map((item) => ({
         no: no++,
-        waktu: new Date(trx.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
-        tanggal: new Date(trx.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
+        waktu: new Date(trx.createdAt).toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        tanggal: new Date(trx.createdAt).toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "short",
+        }),
         idTrx: trx.id.slice(0, 8),
         namaProduk: item.product?.name ?? "-",
         qty: item.qty,
@@ -174,19 +267,46 @@ export default function LaporanPage() {
         subtotal: item.qty * item.price,
       }))
     );
-  }
+  }, [transactions]);
+
+  const dailyChartData = useMemo<DailyChartPoint[]>(
+    () =>
+      dailyChart.map((d) => ({
+        name: new Date(d.date).toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "short",
+        }),
+        omzet: d.revenue,
+        transaksi: d.transactions,
+      })),
+    [dailyChart]
+  );
+
+  const hourChartData = useMemo<HourChartPoint[]>(
+    () =>
+      hourChart.map((h) => ({
+        name: String(h.hour).padStart(2, "0"),
+        count: h.count,
+      })),
+    [hourChart]
+  );
 
   function exportExcel() {
-    const rows = buildRows();
     const wb = utils.book_new();
     const ws1 = utils.json_to_sheet(
       rows.map((r) => ({
-        No: r.no, Tanggal: r.tanggal, Waktu: r.waktu,
-        "ID Transaksi": r.idTrx, "Nama Produk": r.namaProduk,
-        Qty: r.qty, "Harga Satuan": r.harga, Subtotal: r.subtotal,
+        No: r.no,
+        Tanggal: r.tanggal,
+        Waktu: r.waktu,
+        "ID Transaksi": r.idTrx,
+        "Nama Produk": r.namaProduk,
+        Qty: r.qty,
+        "Harga Satuan": r.harga,
+        Subtotal: r.subtotal,
       }))
     );
     utils.book_append_sheet(wb, ws1, "Transaksi");
+
     const ws2 = utils.json_to_sheet([
       { Metrik: "Total Omzet", Nilai: summary?.totalRevenue ?? 0 },
       { Metrik: "Total Transaksi", Nilai: summary?.totalTransactions ?? 0 },
@@ -194,9 +314,13 @@ export default function LaporanPage() {
       { Metrik: "Rata-rata Transaksi", Nilai: summary?.avgTransaction ?? 0 },
     ]);
     utils.book_append_sheet(wb, ws2, "Summary");
+
     const ws3 = utils.json_to_sheet(
       topProducts.map((p, i) => ({
-        Rank: i + 1, Produk: p.name, "Qty Terjual": p.qty, Omzet: p.revenue,
+        Rank: i + 1,
+        Produk: p.name,
+        "Qty Terjual": p.qty,
+        Omzet: p.revenue,
       }))
     );
     utils.book_append_sheet(wb, ws3, "Top Produk");
@@ -210,6 +334,7 @@ export default function LaporanPage() {
     doc.text("Laporan Penjualan", 14, 15);
     doc.setFontSize(10);
     doc.text(`Periode: ${periode}`, 14, 22);
+
     if (summary) {
       autoTable(doc, {
         head: [["Metrik", "Nilai"]],
@@ -219,47 +344,45 @@ export default function LaporanPage() {
           ["Total Item", String(summary.totalItems)],
           ["Rata-rata Transaksi", fmtFull(summary.avgTransaction)],
         ],
-        startY: 27, theme: "grid",
+        startY: 27,
+        theme: "grid",
         headStyles: { fillColor: [146, 64, 14] },
-        styles: { fontSize: 9 }, tableWidth: 90,
+        styles: { fontSize: 9 },
+        tableWidth: 90,
       });
     }
+
     if (topProducts.length > 0) {
       autoTable(doc, {
         head: [["Rank", "Produk", "Qty", "Omzet"]],
         body: topProducts.map((p, i) => [i + 1, p.name, p.qty, fmtFull(p.revenue)]),
-        startY: (doc as any).lastAutoTable.finalY + 8, theme: "grid",
+        startY: (getLastAutoTableY(doc) ?? 52) + 8,
+        theme: "grid",
         headStyles: { fillColor: [146, 64, 14] },
-        styles: { fontSize: 9 }, tableWidth: 90,
+        styles: { fontSize: 9 },
+        tableWidth: 90,
       });
     }
+
     autoTable(doc, {
       head: [["No", "Tgl", "Waktu", "ID Trx", "Produk", "Qty", "Harga", "Subtotal"]],
-      body: buildRows().map((r) => [
-        r.no, r.tanggal, r.waktu, r.idTrx + "...",
-        r.namaProduk, r.qty, fmtFull(r.harga), fmtFull(r.subtotal),
+      body: rows.map((r) => [
+        r.no,
+        r.tanggal,
+        r.waktu,
+        r.idTrx + "...",
+        r.namaProduk,
+        r.qty,
+        fmtFull(r.harga),
+        fmtFull(r.subtotal),
       ]),
-      startY: (doc as any).lastAutoTable.finalY + 8, theme: "grid",
+      startY: (getLastAutoTableY(doc) ?? 52) + 8,
+      theme: "grid",
       headStyles: { fillColor: [146, 64, 14] },
       styles: { fontSize: 8 },
     });
     doc.save(`Laporan_${dateFrom}_${dateTo}.pdf`);
   }
-
-  const rows = buildRows();
-
-  // Data chart harian — label pendek
-  const dailyChartData = dailyChart.map((d) => ({
-    name: new Date(d.date).toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
-    omzet: d.revenue,
-    transaksi: d.transactions,
-  }));
-
-  // Data peak hour
-  const hourChartData = hourChart.map((h) => ({
-    name: String(h.hour).padStart(2, "0"),
-    count: h.count,
-  }));
 
   const MODES: { key: Mode; label: string }[] = [
     { key: "harian", label: "Harian" },
@@ -271,8 +394,6 @@ export default function LaporanPage() {
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
-
-        {/* HEADER */}
         <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">
           <span className="text-sm font-medium text-gray-900">Laporan Penjualan</span>
           <div className="flex items-center gap-2">
@@ -293,17 +414,17 @@ export default function LaporanPage() {
           </div>
         </header>
 
-        {/* FILTER BAR */}
         <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0 flex-wrap">
           <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
             {MODES.map((m) => (
               <button
                 key={m.key}
                 onClick={() => setMode(m.key)}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === m.key
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  mode === m.key
                     ? "bg-white text-gray-900 shadow-sm"
                     : "text-gray-500 hover:text-gray-700"
-                  }`}
+                }`}
               >
                 {m.label}
               </button>
@@ -313,20 +434,24 @@ export default function LaporanPage() {
           {mode === "custom" ? (
             <div className="flex items-center gap-2">
               <input
-                type="date" value={dateFrom} max={dateTo}
+                type="date"
+                value={dateFrom}
+                max={dateTo}
                 onChange={(e) => setDateFrom(e.target.value)}
                 className="px-3 py-1.5 text-xs text-gray-900 border border-gray-200 rounded-lg outline-none focus:border-amber-400"
               />
-              <span className="text-xs text-gray-400">—</span>
+              <span className="text-xs text-gray-400">-</span>
               <input
-                type="date" value={dateTo} max={toInput(new Date())}
+                type="date"
+                value={dateTo}
+                max={toInput(new Date())}
                 onChange={(e) => setDateTo(e.target.value)}
                 className="px-3 py-1.5 text-xs text-gray-900 border border-gray-200 rounded-lg outline-none focus:border-amber-400"
               />
             </div>
           ) : (
             <span className="text-xs text-gray-500">
-              {dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`}
+              {dateFrom === dateTo ? dateFrom : `${dateFrom} - ${dateTo}`}
             </span>
           )}
 
@@ -350,7 +475,6 @@ export default function LaporanPage() {
             <div className="px-4 py-3 bg-red-50 text-red-600 text-sm rounded-xl">{error}</div>
           )}
 
-          {/* METRIC CARDS */}
           <div className="grid grid-cols-4 gap-3">
             {[
               { label: "Total omzet", value: fmt(summary?.totalRevenue ?? 0), sub: "periode ini" },
@@ -366,10 +490,7 @@ export default function LaporanPage() {
             ))}
           </div>
 
-          {/* CHARTS ROW */}
           <div className="grid grid-cols-3 gap-3">
-
-            {/* AreaChart penjualan harian */}
             <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-xs font-medium text-gray-400 tracking-wider">
@@ -377,7 +498,6 @@ export default function LaporanPage() {
                 </p>
               </div>
 
-              {/* Total omzet periode */}
               <p className="text-2xl font-semibold text-gray-900 mb-4">
                 {fmt(summary?.totalRevenue ?? 0)}
                 <span className="text-xs font-normal text-gray-400 ml-2">periode ini</span>
@@ -439,20 +559,7 @@ export default function LaporanPage() {
                         stroke="#BA7517"
                         strokeWidth={2.5}
                         fill="url(#dailyFill)"
-                        dot={(props: any) => {
-                          const { cx, cy, index } = props;
-                          if (cx == null || cy == null) return <g key={index} />;
-                          if (index === 0 || index >= dailyChartData.length) {
-                            return <circle key={index} cx={cx} cy={cy} r={4} fill="#BA7517" stroke="#fff" strokeWidth={2} />;
-                          }
-                          const isUp = dailyChartData[index].omzet >= dailyChartData[index - 1].omzet;
-                          return (
-                            <circle key={index} cx={cx} cy={cy} r={4}
-                              fill={isUp ? "#16a34a" : "#dc2626"}
-                              stroke="#fff" strokeWidth={2}
-                            />
-                          );
-                        }}
+                        dot={(props) => renderDailyDot(props, dailyChartData)}
                         activeDot={{ r: 7, fill: "#f59e0b", stroke: "#fff", strokeWidth: 2.5 }}
                         isAnimationActive={true}
                         animationDuration={900}
@@ -464,7 +571,6 @@ export default function LaporanPage() {
               </div>
             </div>
 
-            {/* Top produk */}
             <div className="bg-white rounded-xl border border-gray-100 p-5">
               <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">TOP PRODUK</p>
               {topProducts.length === 0 ? (
@@ -478,7 +584,8 @@ export default function LaporanPage() {
                       <div key={p.productId}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs text-gray-700 truncate max-w-[130px]">
-                            <span className="text-gray-400 mr-1">{i + 1}.</span>{p.name}
+                            <span className="text-gray-400 mr-1">{i + 1}.</span>
+                            {p.name}
                           </span>
                           <span className="text-xs font-medium text-amber-700">{p.qty} pcs</span>
                         </div>
@@ -496,7 +603,6 @@ export default function LaporanPage() {
             </div>
           </div>
 
-          {/* PEAK HOUR — BarChart Recharts */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-1">
               <p className="text-xs font-medium text-gray-400 tracking-wider">JAM RAMAI (PEAK HOUR)</p>
@@ -560,7 +666,6 @@ export default function LaporanPage() {
             </div>
           </div>
 
-          {/* TABEL TRANSAKSI */}
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
             <table className="w-full">
               <thead>
@@ -574,9 +679,17 @@ export default function LaporanPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {loading ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-sm text-gray-400">Memuat laporan...</td></tr>
+                  <tr>
+                    <td colSpan={8} className="text-center py-12 text-sm text-gray-400">
+                      Memuat laporan...
+                    </td>
+                  </tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-sm text-gray-400">Tidak ada transaksi pada periode ini.</td></tr>
+                  <tr>
+                    <td colSpan={8} className="text-center py-12 text-sm text-gray-400">
+                      Tidak ada transaksi pada periode ini.
+                    </td>
+                  </tr>
                 ) : (
                   rows.map((r) => (
                     <tr key={`${r.idTrx}-${r.no}`} className="hover:bg-gray-50 transition-colors">

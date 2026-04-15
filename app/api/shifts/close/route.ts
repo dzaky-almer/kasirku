@@ -25,18 +25,20 @@ export async function POST(req: Request) {
     );
   }
 
-  const transactions = await prisma.transaction.findMany({
+  const transactionSummary = await prisma.transaction.aggregate({
     where: { shiftId },
+    _sum: { total: true },
+    _count: { id: true },
   });
 
-  const totalSales = transactions.reduce((sum, transaction) => sum + transaction.total, 0);
+  const totalSales = transactionSummary._sum.total ?? 0;
 
   const updatedShift = await prisma.shift.update({
     where: { id: shiftId },
     data: {
       closing_cash,
       total_sales: totalSales,
-      total_transactions: transactions.length,
+      total_transactions: transactionSummary._count.id,
       status: "CLOSED",
       closed_at: new Date(),
       notes,

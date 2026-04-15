@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/sidebar";
 import Providers from "./providers"; 
+import DemoExpiredPopup, { DemoTimerBanner } from "@/DemoExpiredPopup";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,8 +35,10 @@ export default function RootLayout({
           <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
             <Sidebar />
             <div className="flex-1 flex flex-col overflow-hidden">
+              <DemoTimerBanner />
               {children}
             </div>
+            <DemoExpiredPopup />
           </div>
         </Providers> {/* ← TAMBAHKAN */}
       </body>

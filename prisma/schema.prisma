@@ -10,10 +10,13 @@ model User {
   id           String        @id @default(uuid())
   email        String        @unique
   password     String
+  name         String?
+  phone        String?
   createdAt    DateTime      @default(now())
   stores       Store[]
   shifts       Shift[]
   subscription Subscription?
+  usedReferralCodes ReferralCode[] @relation("ReferralCodeUsedBy")
 }
 
 model Store {
@@ -21,12 +24,18 @@ model Store {
   name         String
   type         String
   userId       String
+  address      String?
+  waNumber     String?
+  midtransServerKey String?
+  midtransClientKey String?
+  isDemo       Boolean       @default(false)
   createdAt    DateTime      @default(now())
   user         User          @relation(fields: [userId], references: [id])
   products     Product[]
   shifts       Shift[]
   transactions Transaction[]
   promos       Promo[]
+  demoSessions DemoSession[]
 }
 
 model Product {
@@ -62,6 +71,7 @@ model Subscription {
   id        String   @id @default(uuid())
   userId    String   @unique
   plan      String
+  tier      String   @default("monthly")
   startDate DateTime
   expiredAt DateTime
   status    String
@@ -160,4 +170,35 @@ model PromoRule {
 
   @@index([promoId])
   @@index([order])
+}
+
+model ReferralCode {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  plan         String
+  tier         String   @default("monthly")
+  durationDays Int
+  expiresAt    DateTime?
+  isActive     Boolean  @default(true)
+  isUsed       Boolean  @default(false)
+  usedAt       DateTime?
+  usedByUserId String?
+  createdAt    DateTime @default(now())
+  usedByUser   User?    @relation("ReferralCodeUsedBy", fields: [usedByUserId], references: [id])
+
+  @@index([isActive, isUsed])
+}
+
+model DemoSession {
+  id         String   @id @default(uuid())
+  sessionKey String   @unique
+  storeId    String
+  startedAt  DateTime @default(now())
+  expiresAt  DateTime
+  resetCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  store      Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
 }

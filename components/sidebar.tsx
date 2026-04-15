@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
+import { useDemoMode, clearDemoMeta } from "@/lib/demo";
 
 const navItems = [
   {
@@ -76,23 +77,25 @@ const navItems = [
   }
 ];
 
-const hiddenOn = ["/login", "/register"];
+const hiddenOn = ["/", "/home", "/login", "/register", "/admin/activate"];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { isDemoMode } = useDemoMode();
 
   if (hiddenOn.includes(pathname)) return null;
 
   // Ambil 2 huruf pertama dari email untuk avatar
   const email = session?.user?.email ?? "";
   const initials = email.slice(0, 2).toUpperCase() || "??";
+  const withMode = (href: string) => (isDemoMode ? `${href}?demo=true` : href);
 
   return (
     <aside className="w-14 bg-white border-r border-gray-100 flex flex-col items-center py-4 gap-1 flex-shrink-0">
       {/* Logo */}
       <Link
-        href="/dashboard"
+        href={withMode("/dashboard")}
         className="w-8 h-8 bg-amber-700 rounded-lg flex items-center justify-center mb-3"
         title="Kopi Nusantara"
       >
@@ -109,7 +112,7 @@ export default function Sidebar() {
         return (
           <Link
             key={nav.label}
-            href={nav.href}
+            href={withMode(nav.href)}
             title={nav.label}
             className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
               isActive
@@ -127,32 +130,55 @@ export default function Sidebar() {
       <div className="flex-1" />
 
       {/* Logout */}
-      <button
-        onClick={() => signOut({ callbackUrl: "/login" })}
-        title="Keluar"
-        className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors mb-2"
-      >
-        <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5}>
-          <path
-            d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3"
-            stroke="currentColor"
-            strokeLinecap="round"
-          />
-          <path
-            d="M10 11l3-3-3-3M13 8H6"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+      {isDemoMode ? (
+        <Link
+          href="/home"
+          onClick={() => clearDemoMeta()}
+          title="Keluar Demo"
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors mb-2"
+        >
+          <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5}>
+            <path
+              d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3"
+              stroke="currentColor"
+              strokeLinecap="round"
+            />
+            <path
+              d="M10 11l3-3-3-3M13 8H6"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </Link>
+      ) : (
+        <button
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          title="Keluar"
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors mb-2"
+        >
+          <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5}>
+            <path
+              d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3"
+              stroke="currentColor"
+              strokeLinecap="round"
+            />
+            <path
+              d="M10 11l3-3-3-3M13 8H6"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
 
       {/* Avatar — inisial dari email */}
       <div
-        title={email}
+        title={isDemoMode ? "Akun Demo" : email}
         className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-medium text-amber-800 cursor-default select-none"
       >
-        {initials}
+        {isDemoMode ? "DM" : initials}
       </div>
     </aside>
   );

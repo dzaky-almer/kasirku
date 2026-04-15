@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { supabase } from "@/lib/supabase";
+import { useDemoMode } from "@/lib/demo";
 
 interface Product {
   id: string;
@@ -40,7 +41,8 @@ type StockFilter = "all" | "ok" | "low" | "empty";
 
 export default function ProdukPage() {
   const { data: session } = useSession();
-  const storeId = (session?.user as any)?.storeId ?? "";
+  const { demoStoreId } = useDemoMode();
+  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
 
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch]     = useState("");

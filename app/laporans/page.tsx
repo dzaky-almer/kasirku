@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useDemoMode } from "@/lib/demo";
 
 interface Shift {
   id: string;
@@ -55,7 +56,8 @@ function getRange(mode: Mode): { from: string; to: string } {
 
 export default function LaporanShiftPage() {
   const { data: session } = useSession();
-  const storeId = (session?.user as any)?.storeId ?? "";
+  const { demoStoreId } = useDemoMode();
+  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
 
   const [mode, setMode] = useState<Mode>("harian");
   const [dateFrom, setDateFrom] = useState(toInput(new Date()));

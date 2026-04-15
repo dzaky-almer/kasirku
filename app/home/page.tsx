@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CheckCircle, Zap, Store, BarChart3, Scissors, Smartphone, ArrowRight,
   Menu, X, ShieldCheck, ChevronDown, Download, Calendar, BrainCircuit,
-  Lock, Play, RotateCcw, Sparkles, User, Clock, CreditCard, Star,
-  TrendingUp, Package, Receipt, Wifi, AlertCircle, ChevronRight, Coffee
+  Lock, Play, RotateCcw, User, CreditCard, Star,
+  TrendingUp, Package, Receipt, Wifi, ChevronRight
 } from 'lucide-react';
 
 const WhatsAppIcon = ({ size = 24, className = "" }: { size?: number; className?: string }) => (
@@ -71,7 +71,6 @@ const PLANS = [
 ];
 
 export default function LandingPage() {
-  const [mounted, setMounted] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isYearly, setIsYearly] = useState(true);
   const [scrolled, setScrolled] = useState(false);
@@ -79,13 +78,13 @@ export default function LandingPage() {
   const [activeStep, setActiveStep] = useState(0);
 
   useEffect(() => {
-    setMounted(true);
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const goTo = (path: string) => { window.location.href = path; };
+  const goTo = (path: string) => { window.location.assign(path); };
+  const goToDemo = () => goTo('/dashboard?demo=true');
 
   const handleWA = (planLabel: string) => {
     const tipe = isYearly ? "Tahunan" : "Bulanan";
@@ -98,8 +97,6 @@ export default function LandingPage() {
     window.open(`https://wa.me/${CONFIG.waAdminNumber}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  if (!mounted) return null;
-
   const howItWorks = [
     {
       id: 0, tab: "Coba Demo", emoji: "🎮",
@@ -108,7 +105,7 @@ export default function LandingPage() {
       note: "⏱ Sesi demo 1 jam. Jika habis, pilih berlangganan atau reset akun (data terhapus).",
       steps: ["Klik 'Coba Akun Demo'", "Sistem kasir langsung terbuka", "Coba semua fitur sepuasnya", "Putuskan untuk berlangganan"],
       color: "bg-amber-50 border-amber-200", iconBg: "bg-amber-700",
-      cta: () => goTo('/dashboard'), ctaLabel: "Mulai Demo Sekarang", ctaClass: "bg-amber-700 hover:bg-amber-800",
+      cta: goToDemo, ctaLabel: "Mulai Demo Sekarang", ctaClass: "bg-amber-700 hover:bg-amber-800",
     },
     {
       id: 1, tab: "Berlangganan", emoji: "💳",
@@ -189,7 +186,7 @@ export default function LandingPage() {
               className="flex items-center gap-1.5 text-slate-500 hover:text-amber-700 text-[11px] font-bold px-3 py-2 rounded-xl hover:bg-amber-50 transition">
               <User size={14} /> Masuk
             </button>
-            <button onClick={() => goTo('/dashboard')}
+            <button onClick={goToDemo}
               className="flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200 px-4 py-2 rounded-xl text-[11px] font-bold hover:bg-amber-100 transition">
               <Play size={12} fill="currentColor" /> Demo
             </button>
@@ -225,7 +222,7 @@ export default function LandingPage() {
           <button onClick={() => goTo('/login')} className="w-full py-3.5 bg-slate-100 text-slate-700 rounded-2xl font-bold flex items-center justify-center gap-2 text-sm">
             <User size={16} /> Masuk Dashboard
           </button>
-          <button onClick={() => goTo('/dashboard')} className="w-full py-3.5 bg-amber-100 text-amber-800 rounded-2xl font-bold flex items-center justify-center gap-2 text-sm">
+          <button onClick={goToDemo} className="w-full py-3.5 bg-amber-100 text-amber-800 rounded-2xl font-bold flex items-center justify-center gap-2 text-sm">
             <Play size={14} fill="currentColor" /> Coba Akun Demo
           </button>
           <button onClick={() => goTo('/register')} className="w-full py-3.5 bg-amber-700 text-white rounded-2xl font-black text-sm shadow-lg">
@@ -269,7 +266,7 @@ export default function LandingPage() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <button onClick={() => goTo('/dashboard')}
+              <button onClick={goToDemo}
                 className="group flex items-center justify-center gap-3 bg-amber-700 text-white px-8 py-4 rounded-2xl font-black text-base hover:bg-amber-800 transition-all hover:-translate-y-1 shadow-2xl shadow-amber-700/30 active:scale-95">
                 <Play size={18} fill="currentColor" />
                 Coba Akun Demo Gratis
@@ -573,7 +570,7 @@ export default function LandingPage() {
           <div className="mt-10 bg-amber-50 border border-amber-200 rounded-2xl p-7 text-center">
             <p className="text-sm text-amber-700 font-bold mb-1">Belum yakin mau pilih paket mana?</p>
             <h3 className="text-lg font-black text-slate-900 mb-4">Coba dulu gratis — tanpa kartu kredit, tanpa daftar</h3>
-            <button onClick={() => goTo('/dashboard')}
+            <button onClick={goToDemo}
               className="inline-flex items-center gap-2 bg-amber-700 text-white px-7 py-3.5 rounded-xl font-black text-sm hover:bg-amber-800 transition shadow-md shadow-amber-700/20">
               <Play size={15} fill="currentColor" /> Masuk Akun Demo
             </button>
@@ -622,7 +619,7 @@ export default function LandingPage() {
           <h2 className="text-3xl font-black">Mulai sekarang, gratis</h2>
           <p className="text-slate-400">Coba semua fitur TokoKu tanpa daftar. Kalau cocok, baru berlangganan.</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-            <button onClick={() => goTo('/dashboard')}
+            <button onClick={goToDemo}
               className="flex items-center justify-center gap-2 bg-amber-700 text-white px-8 py-3.5 rounded-xl font-black hover:bg-amber-800 transition shadow-xl shadow-amber-700/30">
               <Play size={17} fill="currentColor" /> Coba Akun Demo
             </button>
@@ -674,7 +671,7 @@ export default function LandingPage() {
                 <div className="space-y-2 text-slate-500">
                   <button onClick={() => goTo('/login')} className="block hover:text-amber-400 transition">Masuk</button>
                   <button onClick={() => goTo('/register')} className="block hover:text-amber-400 transition">Daftar</button>
-                  <button onClick={() => goTo('/dashboard')} className="block hover:text-amber-400 transition">Demo</button>
+                  <button onClick={goToDemo} className="block hover:text-amber-400 transition">Demo</button>
                 </div>
               </div>
               <div>

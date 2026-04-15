@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useDemoMode } from "@/lib/demo";
 
 interface TxnItem {
   productId: string;
@@ -62,7 +63,8 @@ function addDays(d: Date, n: number) {
 
 export default function LaporanPage() {
   const { data: session, status } = useSession();
-  const storeId = (session?.user as any)?.storeId ?? "";
+  const { demoStoreId } = useDemoMode();
+  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
 
   const [mode, setMode] = useState<Mode>("harian");
   const [dateFrom, setDateFrom] = useState(toInput(new Date()));

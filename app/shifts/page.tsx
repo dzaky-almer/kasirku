@@ -2,18 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useDemoMode } from "@/lib/demo";
 
 interface Shift {
   id: string;
   opening_cash: number;
   total_sales: number;
   total_transactions?: number;
-  createdAt?: string;
+  opened_at?: string;
   cashierName?: string;
 }
 
 export default function ShiftsPage() {
   const { data: session, status } = useSession();
+  const { demoStoreId, demoUserId } = useDemoMode();
 
   const [openShift, setOpenShift] = useState<Shift | null>(null);
   const [openingCash, setOpeningCash] = useState<number>(0);
@@ -25,7 +27,8 @@ export default function ShiftsPage() {
   // 🔥 FETCH SHIFT AKTIF
   const fetchShift = async () => {
     try {
-      const res = await fetch("/api/shifts/current");
+      const activeStoreId = (session?.user as any)?.storeId ?? demoStoreId;
+      const res = await fetch(`/api/shifts/current?storeId=${encodeURIComponent(activeStoreId ?? "")}`);
       const data = await res.json();
       setOpenShift(data?.id ? data : null);
     } catch (err) {
@@ -34,15 +37,15 @@ export default function ShiftsPage() {
   };
 
   useEffect(() => {
-    if (status === "authenticated") {
+    if (status === "authenticated" || demoStoreId) {
       fetchShift();
     }
-  }, [status]);
+  }, [status, demoStoreId, session]);
 
   // 🟢 OPEN SHIFT
   const handleOpenShift = async () => {
-    const userId = session?.user?.id;
-    const storeId = (session?.user as any)?.storeId;
+    const userId = session?.user?.id ?? demoUserId;
+    const storeId = (session?.user as any)?.storeId ?? demoStoreId;
 
     if (!userId || !storeId) {
       alert("Session belum siap 😭");
@@ -132,8 +135,8 @@ export default function ShiftsPage() {
   }
 
   function getOpenTime() {
-    if (!openShift?.createdAt) return "—";
-    return new Date(openShift.createdAt).toLocaleTimeString("id-ID", {
+    if (!openShift?.opened_at) return "—";
+    return new Date(openShift.opened_at).toLocaleTimeString("id-ID", {
       hour: "2-digit",
       minute: "2-digit",
     });

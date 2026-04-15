@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Script from "next/script";
+import { useDemoMode } from "@/lib/demo";
 
 interface Product {
   id: string;
@@ -138,8 +139,9 @@ function promoDiscLabel(promo: Promo): string {
 export default function KasirPage() {
   const router = useRouter();
   const { data: session } = useSession();
-  const storeId = (session?.user as any)?.storeId ?? "";
-  const userId = session?.user?.id ?? "";
+  const { demoStoreId, demoUserId } = useDemoMode();
+  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
+  const userId = session?.user?.id ?? demoUserId;
   const strutRef = useRef<HTMLDivElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -182,14 +184,14 @@ export default function KasirPage() {
   }, [storeId]);
 
   useEffect(() => {
-    fetch("/api/shifts/current")
+    fetch(`/api/shifts/current?storeId=${encodeURIComponent(storeId)}`)
       .then(async (res) => {
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error();
         setShift(data);
       })
       .catch(() => setShift(null));
-  }, []);
+  }, [storeId]);
 
   useEffect(() => {
     if (!storeId) return;

@@ -35,6 +35,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     id: user.id,
+    name: user.name,
     email: user.email,
     storeId: user.stores[0]?.id ?? null, // ← TAMBAHKAN
   });

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useDemoMode } from "@/lib/demo";
 import {
   AreaChart,
   Area,
@@ -63,7 +64,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export default function DashboardPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const storeId = (session?.user as any)?.storeId ?? "";
+  const { demoStoreId, isDemoMode } = useDemoMode();
+  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
 
   const [recentTxns, setRecentTxns] = useState<DashTxn[]>(emptyTxn);
   const [stockList, setStockList] = useState<DashStock[]>(emptyStock);
@@ -188,7 +190,7 @@ export default function DashboardPage() {
           <span className="text-sm font-medium text-gray-900">Dashboard</span>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
-              {(session?.user as any)?.email ?? "Kopi Nusantara"}
+              {(session?.user as any)?.email ?? (isDemoMode ? "demo@tokoku.local" : "Kopi Nusantara")}
             </span>
             <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
               {getToday()}

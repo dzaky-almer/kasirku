@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { useDemoMode } from "@/lib/demo";
 
 // ── TYPES ─────────────────────────────────────────────────
 type PromoType = "PRODUCT" | "HAPPY_HOUR" | "MIN_TRANSACTION";
@@ -109,7 +110,8 @@ const TAG_DOT: Record<string, string> = {
 export default function PromoAdminPage() {
   const { data: session } = useSession();
   const router = useRouter();
-  const storeId = (session?.user as any)?.storeId ?? "";
+  const { demoStoreId } = useDemoMode();
+  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
 
   const [promos, setPromos] = useState<Promo[]>([]);
   const [products, setProducts] = useState<Product[]>([]);

@@ -15,7 +15,19 @@ declare module "next-auth" {
   }
 }
 
+declare module "next-auth/jwt" {
+  interface JWT {
+    id?: string;
+    storeId?: string | null;
+  }
+}
 
+type AuthUser = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  storeId?: string | null;
+};
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -44,6 +56,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         return {
           id: user.id,
+          name: user.name,
           email: user.email,
           storeId: user.stores[0]?.id ?? null,
         };
@@ -53,15 +66,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
-        token.storeId = (user as any).storeId;
+        const authUser = user as AuthUser;
+        token.id = authUser.id;
+        token.name = authUser.name;
+        token.storeId = authUser.storeId ?? null;
       }
       return token;
     },
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string;
-        (session.user as any).storeId = token.storeId;
+        session.user.name = (token.name as string | null | undefined) ?? session.user.name;
+        session.user.storeId = token.storeId ?? undefined;
       }
       return session;
     },

@@ -1,11 +1,20 @@
 "use client";
 
+// ============================================================
+// LOKASI: app/login/page.tsx
+// REPLACE file lama dengan ini
+// ============================================================
+
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const justRegistered = searchParams.get("registered") === "1";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -32,48 +41,61 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-amber-50 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50/30 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
+
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-amber-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <svg viewBox="0 0 24 24" className="w-6 h-6 text-white" fill="none" strokeWidth={1.5}>
-              <path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <h1 className="text-xl font-semibold text-gray-900">Kopi Nusantara</h1>
-          <p className="text-sm text-gray-400 mt-1">Masuk ke akun kamu</p>
+          <Link href="/home" className="inline-flex items-center gap-2.5 group">
+            <div className="w-10 h-10 bg-amber-700 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+              <svg viewBox="0 0 24 24" className="w-5 h-5 text-white" fill="none" strokeWidth={2}>
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <span className="text-xl font-black">
+              <span className="text-amber-700">Toko</span>
+              <span className="text-slate-900">Ku</span>
+            </span>
+          </Link>
+          <p className="text-sm text-slate-400 mt-2">Masuk ke akun toko kamu</p>
         </div>
 
-        {/* Form */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 text-black">
+        {/* Notif setelah register */}
+        {justRegistered && (
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm px-4 py-3 rounded-2xl mb-4 text-center font-medium">
+            🎉 Akun berhasil dibuat! Silakan login.
+          </div>
+        )}
+
+        {/* Form Card */}
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-xl shadow-slate-100/80 p-8">
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="text-xs text-black mb-1.5 block">Email</label>
+              <label className="text-xs font-bold text-slate-600 mb-1.5 block">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="kamu@email.com"
+                placeholder="kamu@gmail.com"
                 required
-                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-amber-400 transition-colors"
+                className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
               />
             </div>
 
             <div>
-              <label className="text-xs text-black mb-1.5 block">Password</label>
+              <label className="text-xs font-bold text-slate-600 mb-1.5 block">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-amber-400 transition-colors"
+                className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
               />
             </div>
 
             {error && (
-              <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">
+              <p className="text-xs text-red-500 bg-red-50 px-4 py-2.5 rounded-xl">
                 {error}
               </p>
             )}
@@ -81,12 +103,48 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full py-3.5 bg-amber-700 text-white font-black rounded-2xl hover:bg-amber-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {loading ? "Masuk..." : "Masuk"}
+              {loading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Masuk...
+                </>
+              ) : (
+                "Masuk"
+              )}
             </button>
           </form>
+
+          <div className="mt-5 space-y-3">
+            <div className="relative flex items-center">
+              <div className="flex-1 border-t border-slate-100" />
+              <span className="px-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest">atau</span>
+              <div className="flex-1 border-t border-slate-100" />
+            </div>
+
+            {/* Demo button */}
+            <Link
+              href="/dashboard?demo=true"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-amber-50 text-amber-800 border border-amber-200 rounded-2xl text-sm font-bold hover:bg-amber-100 transition"
+            >
+              ▶ Coba Akun Demo (tanpa login)
+            </Link>
+          </div>
+
+          <p className="text-center text-xs text-slate-400 mt-5">
+            Belum punya akun?{" "}
+            <Link href="/register" className="text-amber-700 font-bold hover:underline">
+              Daftar Sekarang
+            </Link>
+          </p>
         </div>
+
+        <p className="text-center text-xs text-slate-400 mt-4">
+          <Link href="/home" className="hover:text-amber-700 transition">
+            ← Kembali ke Beranda
+          </Link>
+        </p>
       </div>
     </div>
   );

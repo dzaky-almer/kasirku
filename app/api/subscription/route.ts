@@ -36,7 +36,7 @@ export async function GET(req: Request) {
 // POST - Buat subscription baru
 export async function POST(req: Request) {
   const body = await req.json();
-  const { userId, plan } = body;
+  const { userId, plan, tier = "monthly" } = body;
 
   if (!userId || !plan) {
     return NextResponse.json(
@@ -49,13 +49,13 @@ export async function POST(req: Request) {
   const expiredAt = new Date();
 
   // Hitung expired berdasarkan plan
-  if (plan === "monthly") {
+  if (tier === "monthly") {
     expiredAt.setMonth(expiredAt.getMonth() + 1);
-  } else if (plan === "yearly") {
+  } else if (tier === "yearly") {
     expiredAt.setFullYear(expiredAt.getFullYear() + 1);
   } else {
     return NextResponse.json(
-      { error: "Plan harus 'monthly' atau 'yearly'" },
+      { error: "Tier harus 'monthly' atau 'yearly'" },
       { status: 400 }
     );
   }
@@ -64,6 +64,7 @@ export async function POST(req: Request) {
     where: { userId },
     update: {
       plan,
+      tier,
       startDate,
       expiredAt,
       status: "active",
@@ -71,6 +72,7 @@ export async function POST(req: Request) {
     create: {
       userId,
       plan,
+      tier,
       startDate,
       expiredAt,
       status: "active",

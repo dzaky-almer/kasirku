@@ -17,7 +17,11 @@ const DEMO_PRODUCTS = [
 ];
 
 function getDemoDurationHours(): number {
-  const value = parseFloat(process.env.DEMO_DURATION_HOURS ?? "1");
+  const raw =
+    process.env.DEMO_DURATION_HOURS ??
+    process.env.NEXT_PUBLIC_DEMO_DURATION_HOURS ??
+    "1";
+  const value = parseFloat(raw);
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
@@ -83,6 +87,10 @@ function buildSessionPayload(sessionKey: string, storeId: string, userId: string
     remainingMinutes: Math.ceil(remainingMs / 60000),
     durationHours: getDemoDurationHours(),
   };
+}
+
+function getExpectedExpiresAt(startedAt: Date) {
+  return new Date(startedAt.getTime() + getDemoDurationHours() * 60 * 60 * 1000);
 }
 
 async function resetDemoData(storeId: string) {
@@ -199,6 +207,34 @@ export async function GET(req: Request) {
 
     if (!session) {
       return NextResponse.json({ active: false, error: "Sesi demo tidak ditemukan" }, { status: 404 });
+    }
+
+    const expectedExpiresAt = getExpectedExpiresAt(session.startedAt);
+    const shouldSyncDuration =
+      Math.abs(expectedExpiresAt.getTime() - session.expiresAt.getTime()) > 1000;
+
+    if (shouldSyncDuration) {
+      const syncedSession = await prisma.demoSession.update({
+        where: { sessionKey },
+        data: { expiresAt: expectedExpiresAt },
+        include: {
+          store: {
+            select: {
+              id: true,
+              userId: true,
+            },
+          },
+        },
+      });
+
+      return NextResponse.json(
+        buildSessionPayload(
+          syncedSession.sessionKey,
+          syncedSession.store.id,
+          syncedSession.store.userId,
+          syncedSession.expiresAt
+        )
+      );
     }
 
     if (session.store.id !== activeStore.id) {

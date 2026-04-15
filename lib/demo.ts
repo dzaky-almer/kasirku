@@ -110,17 +110,9 @@ export async function ensureDemoSession(existingSessionKey?: string | null): Pro
 
 export function useDemoMode() {
   const searchParams = useSearchParams();
-  const [demoMeta, setDemoMeta] = useState<DemoMeta | null>(null);
-  const [hydrated, setHydrated] = useState(false);
+  const [demoMeta, setDemoMeta] = useState<DemoMeta | null>(() => readDemoMeta());
 
   useEffect(() => {
-    setDemoMeta(readDemoMeta());
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-
     const hasDemoQuery = searchParams.get("demo") === "true";
     const storedMeta = readDemoMeta();
 
@@ -140,10 +132,10 @@ export function useDemoMode() {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, searchParams]);
+  }, [searchParams]);
 
   const hasDemoQuery = searchParams.get("demo") === "true";
-  const isDemoMode = hasDemoQuery || (hydrated && Boolean(demoMeta?.sessionKey));
+  const isDemoMode = hasDemoQuery || Boolean(demoMeta?.sessionKey);
 
   return {
     isDemoMode,

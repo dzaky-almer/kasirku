@@ -1,7 +1,4 @@
-// ============================================================
-// LOKASI: app/api/demo/reset/route.ts
-// DIPAKAI DI: DemoExpiredPopup → tombol "Reset Demo"
-// ============================================================
+
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";

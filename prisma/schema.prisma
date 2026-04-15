@@ -11,8 +11,8 @@ model User {
   email        String        @unique
   password     String
   createdAt    DateTime      @default(now())
-  stores       Store[]
   shifts       Shift[]
+  stores       Store[]
   subscription Subscription?
 }
 
@@ -22,11 +22,11 @@ model Store {
   type         String
   userId       String
   createdAt    DateTime      @default(now())
-  user         User          @relation(fields: [userId], references: [id])
   products     Product[]
-  shifts       Shift[]
-  transactions Transaction[]
   promos       Promo[]
+  shifts       Shift[]
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
 
   @@index([userId])
 }
@@ -43,11 +43,11 @@ model Product {
   unit             String            @default("pcs")
   category         String?
   imageUrl         String?
-  label            String?
   storeId          String
+  label            String?
   store            Store             @relation(fields: [storeId], references: [id])
-  transactionItems TransactionItem[]
   promoRules       PromoRule[]
+  transactionItems TransactionItem[]
 
   @@index([storeId])
   @@index([storeId, name])
@@ -59,8 +59,8 @@ model TransactionItem {
   productId     String
   qty           Int
   price         Int
-  transaction   Transaction @relation(fields: [transactionId], references: [id])
   product       Product     @relation(fields: [productId], references: [id])
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
 
   @@index([transactionId])
   @@index([productId])
@@ -80,15 +80,15 @@ model Transaction {
   id             String            @id @default(uuid())
   storeId        String
   total          Int
-  discountAmount Int               @default(0)
   paymentMethod  String            @default("cash")
   createdAt      DateTime          @default(now())
-  store          Store             @relation(fields: [storeId], references: [id])
-  items          TransactionItem[]
   shiftId        String
-  shift          Shift             @relation(fields: [shiftId], references: [id])
+  discountAmount Int               @default(0)
   promoId        String?
   promo          Promo?            @relation(fields: [promoId], references: [id])
+  shift          Shift             @relation(fields: [shiftId], references: [id])
+  store          Store             @relation(fields: [storeId], references: [id])
+  items          TransactionItem[]
 
   @@index([storeId, createdAt])
   @@index([shiftId])
@@ -106,10 +106,10 @@ model Shift {
   closed_at          DateTime?
   notes              String?
   userId             String
-  user               User          @relation(fields: [userId], references: [id])
-  cashierName        String        @default("Kasir")
   storeId            String
+  cashierName        String        @default("Kasir")
   store              Store         @relation(fields: [storeId], references: [id])
+  user               User          @relation(fields: [userId], references: [id])
   transactions       Transaction[]
 
   @@index([storeId, status])
@@ -118,19 +118,19 @@ model Shift {
 }
 
 model Promo {
-  id           String      @id @default(uuid())
+  id           String        @id @default(uuid())
   storeId      String
   name         String
   tag          String?
-  priority     Int         @default(1)
-  stackable    Boolean     @default(false)
+  priority     Int           @default(1)
+  stackable    Boolean       @default(false)
   maxUsage     Int?
-  usageCount   Int         @default(0)
+  usageCount   Int           @default(0)
   startDate    DateTime?
   endDate      DateTime?
-  isActive     Boolean     @default(true)
-  createdAt    DateTime    @default(now())
-  store        Store       @relation(fields: [storeId], references: [id])
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  store        Store         @relation(fields: [storeId], references: [id])
   rules        PromoRule[]
   transactions Transaction[]
 
@@ -146,10 +146,10 @@ model PromoRule {
   discountType   String
   discountValue  Int
   productId      String?
-  product        Product? @relation(fields: [productId], references: [id])
   startTime      String?
   endTime        String?
   minTransaction Int?
+  product        Product? @relation(fields: [productId], references: [id])
   promo          Promo    @relation(fields: [promoId], references: [id], onDelete: Cascade)
 
   @@index([promoId])

@@ -246,7 +246,7 @@ export default function RegisterPage() {
                   onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
                   placeholder="TK-XXXX-XXXX"
                   maxLength={12}
-                  className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition font-mono text-center text-lg tracking-widest font-bold"
+                  className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition font-mono text-center text-lg tracking-widest font-bold text-black"
                 />
 
                 {/* Status kode */}

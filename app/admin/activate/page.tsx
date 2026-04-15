@@ -144,7 +144,7 @@ export default function AdminActivatePage() {
                 value={adminSecret}
                 onChange={(e) => setAdminSecret(e.target.value)}
                 placeholder="••••••••••••"
-                className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 transition"
+                className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 transition text-black"
               />
               {authError && <p className="text-xs text-red-500 mt-1">{authError}</p>}
             </div>
@@ -220,7 +220,7 @@ export default function AdminActivatePage() {
                   <input
                     type="number" min={1} max={50} value={quantity}
                     onChange={(e) => setQuantity(parseInt(e.target.value))}
-                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-amber-400"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-amber-400 text-black"
                   />
                 </div>
                 <div>
@@ -228,7 +228,7 @@ export default function AdminActivatePage() {
                   <input
                     type="number" min={1} value={expiresInDays}
                     onChange={(e) => setExpiresInDays(parseInt(e.target.value))}
-                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-amber-400"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-amber-400 text-black"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">Waktu kode bisa dipakai</p>
                 </div>

@@ -1,6 +1,7 @@
 // app/api/promos/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────
 // GET /api/promos?storeId=xxx

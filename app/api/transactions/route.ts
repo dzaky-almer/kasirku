@@ -1,33 +1,56 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
+import { getDateRangeForDay } from "@/lib/date";
+
+interface CartItemInput {
+  productId: string;
+  qty: number;
+  price: number;
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return "Transaksi gagal";
+}
 
 export async function POST(req: Request) {
+  const session = await auth();
+  const userId = session?.user?.id;
   const body = await req.json();
   const {
     storeId,
-    userId,
     items: cartItems,
     paymentMethod,
     shiftId,
     promoId,
-    discountAmount
-  } = body;
+    discountAmount,
+  } = body as {
+    storeId?: string;
+    items?: CartItemInput[];
+    paymentMethod?: string;
+    shiftId?: string;
+    promoId?: string | null;
+    discountAmount?: number;
+  };
 
-  // VALIDASI BASIC
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   if (!shiftId) {
     return NextResponse.json({ error: "Shift belum dibuka" }, { status: 400 });
   }
 
-  if (!storeId || !userId || !cartItems || cartItems.length === 0) {
+  if (!storeId || !Array.isArray(cartItems) || cartItems.length === 0) {
     return NextResponse.json(
-      { error: "storeId, userId, dan items wajib diisi" },
+      { error: "storeId dan items wajib diisi" },
       { status: 400 }
     );
   }
 
   const subtotal = cartItems.reduce(
-    (sum: number, item: { price: number; qty: number }) =>
-      sum + item.price * item.qty,
+    (sum, item) => sum + item.price * item.qty,
     0
   );
 
@@ -36,44 +59,64 @@ export async function POST(req: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      const store = await tx.store.findFirst({
+        where: { id: storeId, userId },
+        select: { id: true },
+      });
 
-      // 🔥 1. VALIDASI & KURANGI STOK (ANTI MINUS)
+      if (!store) {
+        throw new Error("Store tidak ditemukan atau bukan milik akun ini");
+      }
+
+      const shift = await tx.shift.findFirst({
+        where: {
+          id: shiftId,
+          storeId,
+          userId,
+          status: "OPEN",
+        },
+        select: { id: true },
+      });
+
+      if (!shift) {
+        throw new Error("Shift tidak valid untuk toko ini");
+      }
+
       for (const item of cartItems) {
         const res = await tx.product.updateMany({
           where: {
             id: item.productId,
-            stock: { gte: item.qty }, // pastikan stok cukup
+            storeId,
+            stock: { gte: item.qty },
           },
           data: {
             stock: { decrement: item.qty },
           },
         });
 
-        // kalau gagal update = stok tidak cukup
         if (res.count === 0) {
-          throw new Error(`Stok produk tidak cukup / sudah habis`);
+          throw new Error("Stok produk tidak cukup / sudah habis");
         }
       }
 
       if (promoId) {
-  const promo = await tx.promo.findUnique({
-    where: { id: promoId },
-  });
+        const promo = await tx.promo.findFirst({
+          where: { id: promoId, storeId },
+        });
 
-  if (!promo) {
-    throw new Error("Promo tidak ditemukan");
-  }
+        if (!promo) {
+          throw new Error("Promo tidak ditemukan");
+        }
 
-  if (!promo.isActive) {
-    throw new Error("Promo tidak aktif");
-  }
+        if (!promo.isActive) {
+          throw new Error("Promo tidak aktif");
+        }
 
-  if (promo.maxUsage && promo.usageCount >= promo.maxUsage) {
-    throw new Error("Promo sudah mencapai batas penggunaan");
-  }
-}
+        if (promo.maxUsage && promo.usageCount >= promo.maxUsage) {
+          throw new Error("Promo sudah mencapai batas penggunaan");
+        }
+      }
 
-      // 🔥 2. BUAT TRANSAKSI
       const transaction = await tx.transaction.create({
         data: {
           storeId,
@@ -83,7 +126,7 @@ export async function POST(req: Request) {
           paymentMethod: paymentMethod ?? "cash",
           ...(promoId ? { promoId } : {}),
           items: {
-            create: cartItems.map((item: any) => ({
+            create: cartItems.map((item) => ({
               productId: item.productId,
               qty: item.qty,
               price: item.price,
@@ -93,17 +136,15 @@ export async function POST(req: Request) {
         include: { items: true },
       });
 
-      // 🔥 2.5 UPDATE PROMO USAGE
-if (promoId) {
-  await tx.promo.update({
-    where: { id: promoId },
-    data: {
-      usageCount: { increment: 1 },
-    },
-  });
-} 
+      if (promoId) {
+        await tx.promo.update({
+          where: { id: promoId },
+          data: {
+            usageCount: { increment: 1 },
+          },
+        });
+      }
 
-      // 🔥 3. UPDATE SHIFT
       await tx.shift.update({
         where: { id: shiftId },
         data: {
@@ -116,13 +157,12 @@ if (promoId) {
     });
 
     return NextResponse.json(result, { status: 201 });
-
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Transaction error:", error);
 
     return NextResponse.json(
       {
-        error: error.message || "Transaksi gagal",
+        error: getErrorMessage(error),
       },
       { status: 400 }
     );
@@ -130,40 +170,60 @@ if (promoId) {
 }
 
 export async function GET(req: Request) {
+  const session = await auth();
+  const userId = session?.user?.id;
   const { searchParams } = new URL(req.url);
   const storeId = searchParams.get("storeId");
   const date = searchParams.get("date");
+
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   if (!storeId) {
     return NextResponse.json({ error: "storeId wajib diisi" }, { status: 400 });
   }
 
+  const store = await prisma.store.findFirst({
+    where: { id: storeId, userId },
+    select: { id: true },
+  });
+
+  if (!store) {
+    return NextResponse.json(
+      { error: "Store tidak ditemukan atau bukan milik akun ini" },
+      { status: 403 }
+    );
+  }
+
+  const dateFilter = date ? getDateRangeForDay(date) : null;
+
   const transactions = await prisma.transaction.findMany({
     where: {
       storeId,
-      ...(date && {
+      ...(dateFilter && {
         createdAt: {
-          gte: new Date(`${date}T00:00:00.000Z`),
-          lte: new Date(`${date}T23:59:59.999Z`),
+          gte: dateFilter.start,
+          lte: dateFilter.end,
         },
       }),
     },
-include: {
-  items: true,
-  promo: {
-    select: {
-      id: true,
-      name: true,
-      rules: {
-        take: 1, // ambil rule pertama aja
+    include: {
+      items: true,
+      promo: {
         select: {
-          discountType: true,
-          discountValue: true,
+          id: true,
+          name: true,
+          rules: {
+            take: 1,
+            select: {
+              discountType: true,
+              discountValue: true,
+            },
+          },
         },
       },
     },
-  },
-},
     orderBy: { createdAt: "desc" },
   });
 

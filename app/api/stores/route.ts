@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
 
-// GET - Ambil store by userId
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const userId = searchParams.get("userId");
+export async function GET() {
+  const session = await auth();
+  const userId = session?.user?.id;
 
   if (!userId) {
-    return NextResponse.json(
-      { error: "userId wajib diisi" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const stores = await prisma.store.findMany({
@@ -20,14 +17,20 @@ export async function GET(req: Request) {
   return NextResponse.json(stores);
 }
 
-// POST - Buat store baru
 export async function POST(req: Request) {
-  const body = await req.json();
-  const { name, type, userId } = body;
+  const session = await auth();
+  const userId = session?.user?.id;
 
-  if (!name || !type || !userId) {
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json();
+  const { name, type } = body;
+
+  if (!name || !type) {
     return NextResponse.json(
-      { error: "name, type, userId wajib diisi" },
+      { error: "name dan type wajib diisi" },
       { status: 400 }
     );
   }

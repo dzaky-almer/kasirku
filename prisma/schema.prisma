@@ -11,8 +11,8 @@ model User {
   email        String        @unique
   password     String
   createdAt    DateTime      @default(now())
-  stores       Store[]
   shifts       Shift[]
+  stores       Store[]
   subscription Subscription?
 }
 
@@ -22,11 +22,11 @@ model Store {
   type         String
   userId       String
   createdAt    DateTime      @default(now())
-  user         User          @relation(fields: [userId], references: [id])
   products     Product[]
-  shifts       Shift[]
-  transactions Transaction[]
   promos       Promo[]
+  shifts       Shift[]
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
 }
 
 model Product {
@@ -41,11 +41,11 @@ model Product {
   unit             String            @default("pcs")
   category         String?
   imageUrl         String?
-  label            String?
   storeId          String
+  label            String?
   store            Store             @relation(fields: [storeId], references: [id])
+  promoRules       PromoRule[]
   transactionItems TransactionItem[]
-  promoRules       PromoRule[]       // ← ganti dari promos Promo[] ke PromoRule[]
 }
 
 model TransactionItem {
@@ -54,8 +54,8 @@ model TransactionItem {
   productId     String
   qty           Int
   price         Int
-  transaction   Transaction @relation(fields: [transactionId], references: [id])
   product       Product     @relation(fields: [productId], references: [id])
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
 }
 
 model Subscription {
@@ -72,15 +72,15 @@ model Transaction {
   id             String            @id @default(uuid())
   storeId        String
   total          Int
-  discountAmount Int               @default(0)
   paymentMethod  String            @default("cash")
   createdAt      DateTime          @default(now())
+  shiftId        String
+  discountAmount Int               @default(0)
+  promoId        String?
+  promo          Promo?            @relation(fields: [promoId], references: [id])
+  shift          Shift             @relation(fields: [shiftId], references: [id])
   store          Store             @relation(fields: [storeId], references: [id])
   items          TransactionItem[]
-  shiftId        String
-  shift          Shift             @relation(fields: [shiftId], references: [id])
-  promoId        String?           // tetap ada — menyimpan promo utama yang dipakai
-  promo          Promo?            @relation(fields: [promoId], references: [id])
 }
 
 model Shift {
@@ -89,74 +89,52 @@ model Shift {
   closing_cash       Float?
   total_sales        Float         @default(0)
   total_transactions Int           @default(0)
-  status             String        // OPEN | CLOSED
+  status             String
   opened_at          DateTime      @default(now())
   closed_at          DateTime?
   notes              String?
   userId             String
-  user               User          @relation(fields: [userId], references: [id])
-  cashierName        String        @default("Kasir")
   storeId            String
+  cashierName        String        @default("Kasir")
   store              Store         @relation(fields: [storeId], references: [id])
+  user               User          @relation(fields: [userId], references: [id])
   transactions       Transaction[]
 }
 
-// ============================================================
-// MODEL Promo — diperbarui untuk multi-rule
-// ============================================================
 model Promo {
-  id          String      @id @default(uuid())
-  storeId     String
-  name        String
-
-  // ── Field baru ──────────────────────────────────────────
-  tag         String?     // label warna: "red"|"orange"|"blue"|"green"|"purple"
-  priority    Int         @default(1)    // urutan evaluasi; lebih kecil = lebih dulu
-  stackable   Boolean     @default(false) // bisa digabung dengan promo lain?
-  maxUsage    Int?        // null = tidak terbatas
-  usageCount  Int         @default(0)    // counter pemakaian
-  // ────────────────────────────────────────────────────────
-
-  startDate   DateTime?
-  endDate     DateTime?
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-
+  id           String        @id @default(uuid())
+  storeId      String
+  name         String
+  startDate    DateTime?
+  endDate      DateTime?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  maxUsage     Int?
+  priority     Int           @default(1)
+  stackable    Boolean       @default(false)
+  tag          String?
+  usageCount   Int           @default(0)
   store        Store         @relation(fields: [storeId], references: [id])
-  rules        PromoRule[]   // ← aturan diskon (ganti field lama yang flat)
+  rules        PromoRule[]
   transactions Transaction[]
 
   @@index([storeId])
   @@index([priority])
 }
 
-// ============================================================
-// MODEL BARU: PromoRule — 1 promo bisa punya banyak aturan
-// ============================================================
 model PromoRule {
-  id            String  @id @default(uuid())
-  promoId       String
-  order         Int     @default(0) // urutan rule dalam promo
-
-  // Tipe aturan: PRODUCT | HAPPY_HOUR | MIN_TRANSACTION
-  type          String
-  // Tipe diskon: PERCENT | NOMINAL
-  discountType  String
-  // Nilai diskon
-  discountValue Int
-
-  // Untuk tipe PRODUCT
-  productId     String?
-  product       Product? @relation(fields: [productId], references: [id])
-
-  // Untuk tipe HAPPY_HOUR — format "HH:mm"
-  startTime     String?
-  endTime       String?
-
-  // Untuk tipe MIN_TRANSACTION
+  id             String   @id @default(uuid())
+  promoId        String
+  order          Int      @default(0)
+  type           String
+  discountType   String
+  discountValue  Int
+  productId      String?
+  startTime      String?
+  endTime        String?
   minTransaction Int?
-
-  promo         Promo   @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  product        Product? @relation(fields: [productId], references: [id])
+  promo          Promo    @relation(fields: [promoId], references: [id], onDelete: Cascade)
 
   @@index([promoId])
   @@index([order])

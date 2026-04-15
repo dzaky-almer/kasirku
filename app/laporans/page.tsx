@@ -5,6 +5,12 @@ import { useSession } from "next-auth/react";
 import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import {
+  AreaChart, Area,
+  XAxis, YAxis,
+  Tooltip, CartesianGrid,
+  ResponsiveContainer,
+} from "recharts";
 
 interface Shift {
   id: string;
@@ -53,6 +59,29 @@ function getRange(mode: Mode): { from: string; to: string } {
   return { from: toInput(today), to: toInput(today) };
 }
 
+const ShiftTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div style={{
+      backgroundColor: "#111827",
+      border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: "10px",
+      fontSize: "12px",
+      padding: "10px 14px",
+    }}>
+      <p style={{ color: "#9ca3af", margin: "0 0 4px 0" }}>{label}</p>
+      <p style={{ color: "#f59e0b", margin: 0, fontWeight: 600, fontSize: "13px" }}>
+        {fmt(payload[0].value as number)}
+      </p>
+      {payload[1] && (
+        <p style={{ color: "#6ee7b7", margin: "2px 0 0 0", fontSize: "11px" }}>
+          {payload[1].value} transaksi
+        </p>
+      )}
+    </div>
+  );
+};
+
 export default function LaporanShiftPage() {
   const { data: session } = useSession();
   const storeId = (session?.user as any)?.storeId ?? "";
@@ -69,7 +98,6 @@ export default function LaporanShiftPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
 
-  // Sync range saat mode berubah
   useEffect(() => {
     if (mode !== "custom") {
       const r = getRange(mode);
@@ -116,7 +144,6 @@ export default function LaporanShiftPage() {
     }
   }
 
-  // Derived
   const allCashiers = Array.from(
     new Set(shifts.map((s) => (s.cashierName || "—").trim()))
   );
@@ -129,7 +156,6 @@ export default function LaporanShiftPage() {
     );
   });
 
-  // Summary dihitung dari filtered — ikut filter kasir & search
   const filteredSummary = {
     total_sales:        filtered.reduce((a, s) => a + s.total_sales, 0),
     total_transactions: filtered.reduce((a, s) => a + s.total_transactions, 0),
@@ -142,7 +168,6 @@ export default function LaporanShiftPage() {
     },
   };
 
-  // Insight otomatis — ikut filtered
   const busiest = filtered.length > 0
     ? filtered.reduce((a, b) => b.total_transactions > a.total_transactions ? b : a)
     : null;
@@ -151,8 +176,12 @@ export default function LaporanShiftPage() {
     ? filtered.reduce((a, b) => b.total_sales > a.total_sales ? b : a)
     : null;
 
-  // Chart — ikut filtered
-  const maxSales = Math.max(...filtered.map(s => s.total_sales), 1);
+  const shiftChartData = filtered.map((s, i) => ({
+    name: new Date(s.opened_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+    omzet: s.total_sales,
+    transaksi: s.total_transactions,
+    kasir: (s.cashierName || `Shift ${i + 1}`).trim(),
+  }));
 
   function shiftDiff(s: Shift) {
     return (s.closing_cash ?? 0) - (s.opening_cash + s.total_sales);
@@ -168,7 +197,6 @@ export default function LaporanShiftPage() {
     return "bg-red-50 text-red-600";
   }
 
-  // Export Excel
   function exportExcel() {
     const wb = utils.book_new();
     const ws1 = utils.json_to_sheet(filtered.map((s, i) => ({
@@ -195,7 +223,6 @@ export default function LaporanShiftPage() {
     writeFile(wb, `LaporanShift_${dateFrom}_${dateTo}.xlsx`);
   }
 
-  // Export PDF
   function exportPDF() {
     const doc = new jsPDF();
     const periode = dateFrom === dateTo ? dateFrom : `${dateFrom} s/d ${dateTo}`;
@@ -260,7 +287,6 @@ export default function LaporanShiftPage() {
 
         {/* FILTER BAR */}
         <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0 flex-wrap">
-          {/* Mode */}
           <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
             {MODES.map(m => (
               <button key={m.key} onClick={() => setMode(m.key)}
@@ -272,7 +298,6 @@ export default function LaporanShiftPage() {
             ))}
           </div>
 
-          {/* Date range — custom */}
           {mode === "custom" ? (
             <div className="flex items-center gap-2">
               <input type="date" value={dateFrom} max={dateTo}
@@ -291,14 +316,12 @@ export default function LaporanShiftPage() {
             </span>
           )}
 
-          {/* Filter kasir */}
           <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)}
             className="px-3 py-1.5 text-xs text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 bg-white">
             <option value="all">Semua Kasir</option>
             {allCashiers.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
 
-          {/* Search */}
           <div className="relative ml-auto">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" viewBox="0 0 16 16" fill="none" strokeWidth={1.5}>
               <circle cx="7" cy="7" r="4.5" stroke="currentColor"/>
@@ -313,12 +336,10 @@ export default function LaporanShiftPage() {
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
 
-          {/* ERROR */}
           {error && (
             <div className="px-4 py-3 bg-red-50 text-red-600 text-sm rounded-xl">{error}</div>
           )}
 
-          {/* SKELETON LOADING */}
           {loading && (
             <div className="space-y-3">
               {[...Array(4)].map((_, i) => (
@@ -337,7 +358,7 @@ export default function LaporanShiftPage() {
 
           {!loading && summary && (
             <>
-              {/* METRIC CARDS — pakai filteredSummary */}
+              {/* METRIC CARDS */}
               <div className="grid grid-cols-5 gap-3">
                 {[
                   { label: "Total omzet",        value: fmt(filteredSummary.total_sales),     sub: "periode ini" },
@@ -359,40 +380,95 @@ export default function LaporanShiftPage() {
                 ))}
               </div>
 
-              {/* INSIGHT + CHART */}
+              {/* CHART + INSIGHT */}
               <div className="grid grid-cols-3 gap-3">
 
-                {/* Chart — pakai filtered */}
+                {/* AreaChart */}
                 <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
-                  <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">PENJUALAN PER SHIFT</p>
-                  {filtered.length === 0 ? (
-                    <p className="text-xs text-gray-400 py-8 text-center">Tidak ada data.</p>
-                  ) : (
-                    <div className="flex items-end gap-2 h-32">
-                      {filtered.map((s, i) => {
-                        const pct   = Math.max(Math.round((s.total_sales / maxSales) * 100), s.total_sales > 0 ? 4 : 0);
-                        const kasir = (s.cashierName || "Kasir").trim() || `Shift ${i + 1}`;
-                        const time  = new Date(s.opened_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-                        return (
-                          <div key={s.id} className="flex-1 flex flex-col items-center gap-1 group relative">
-                            <div className="w-full flex items-end justify-center" style={{ height: 96 }}>
-                              <div
-                                className="w-full rounded-t-md bg-amber-200 group-hover:bg-amber-500 transition-colors"
-                                style={{ height: `${pct}%` }}
-                              />
-                            </div>
-                            <span className="text-[9px] text-gray-400 whitespace-nowrap">{time}</span>
-                            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10">
-                              {kasir}: {fmt(s.total_sales)}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <p className="text-xs font-medium text-gray-400 tracking-wider mb-1">PENJUALAN PER SHIFT</p>
+                  <p className="text-2xl font-semibold text-gray-900 mb-4">
+                    {fmt(filteredSummary.total_sales)}
+                    <span className="text-xs font-normal text-gray-400 ml-2">periode ini</span>
+                  </p>
+
+                  <div className="w-full h-44">
+                    {shiftChartData.length === 0 ? (
+                      <div className="h-full flex items-center justify-center">
+                        <p className="text-xs text-gray-400">Tidak ada data.</p>
+                      </div>
+                    ) : shiftChartData.length === 1 ? (
+                      <div className="h-full flex flex-col items-center justify-center gap-1">
+                        <p className="text-xs text-gray-400">{shiftChartData[0].kasir} · {shiftChartData[0].name}</p>
+                        <p className="text-lg font-semibold text-amber-700">{fmt(shiftChartData[0].omzet)}</p>
+                        <p className="text-xs text-gray-400">{shiftChartData[0].transaksi} transaksi</p>
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={shiftChartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="shiftFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%"   stopColor="#f59e0b" stopOpacity={0.5}  />
+                              <stop offset="60%"  stopColor="#BA7517" stopOpacity={0.15} />
+                              <stop offset="100%" stopColor="#BA7517" stopOpacity={0}    />
+                            </linearGradient>
+                          </defs>
+
+                          <CartesianGrid strokeDasharray="4 4" stroke="rgba(0,0,0,0.05)" vertical={false} />
+
+                          <XAxis
+                            dataKey="name"
+                            fontSize={10}
+                            tick={{ fill: "#9ca3af" }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+
+                          <YAxis
+                            fontSize={10}
+                            tick={{ fill: "#9ca3af" }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(v) => fmt(v)}
+                            width={64}
+                          />
+
+                          <Tooltip
+                            content={<ShiftTooltip />}
+                            cursor={{ stroke: "rgba(186,117,23,0.25)", strokeWidth: 1, strokeDasharray: "4 4" }}
+                          />
+
+                          <Area
+                            type="monotone"
+                            dataKey="omzet"
+                            stroke="#BA7517"
+                            strokeWidth={2.5}
+                            fill="url(#shiftFill)"
+                            dot={(props: any) => {
+                              const { cx, cy, index } = props;
+                              if (cx == null || cy == null) return <g key={index} />;
+                              if (index === 0 || index >= shiftChartData.length) {
+                                return <circle key={index} cx={cx} cy={cy} r={4} fill="#BA7517" stroke="#fff" strokeWidth={2} />;
+                              }
+                              const isUp = shiftChartData[index].omzet >= shiftChartData[index - 1].omzet;
+                              return (
+                                <circle key={index} cx={cx} cy={cy} r={4}
+                                  fill={isUp ? "#16a34a" : "#dc2626"}
+                                  stroke="#fff" strokeWidth={2}
+                                />
+                              );
+                            }}
+                            activeDot={{ r: 7, fill: "#f59e0b", stroke: "#fff", strokeWidth: 2.5 }}
+                            isAnimationActive={true}
+                            animationDuration={900}
+                            animationEasing="ease-out"
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
                 </div>
 
-                {/* Insight — pakai filtered */}
+                {/* Insight */}
                 <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
                   <p className="text-xs font-medium text-gray-400 tracking-wider">INSIGHT OTOMATIS</p>
                   {filtered.length === 0 ? (
@@ -445,7 +521,6 @@ export default function LaporanShiftPage() {
 
                       return (
                         <div key={s.id}>
-                          {/* ROW */}
                           <div
                             className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors cursor-pointer"
                             onClick={() => setExpandedId(expanded ? null : s.id)}
@@ -487,7 +562,6 @@ export default function LaporanShiftPage() {
                             </div>
                           </div>
 
-                          {/* DETAIL EXPANDED */}
                           {expanded && (
                             <div className="bg-gray-50 px-5 py-4 border-t border-gray-100">
                               <div className="grid grid-cols-2 gap-4 mb-3">
@@ -539,7 +613,6 @@ export default function LaporanShiftPage() {
             </>
           )}
 
-          {/* EMPTY STATE */}
           {!loading && !error && shifts.length === 0 && (
             <div className="text-center py-16">
               <p className="text-sm text-gray-400">Tidak ada shift pada periode ini.</p>

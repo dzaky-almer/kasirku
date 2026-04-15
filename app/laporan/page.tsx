@@ -1,10 +1,17 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import {
+  AreaChart, Area,
+  BarChart, Bar,
+  XAxis, YAxis,
+  Tooltip, CartesianGrid,
+  ResponsiveContainer,
+} from "recharts";
 
 interface TxnItem {
   productId: string;
@@ -54,11 +61,44 @@ function fmtFull(n: number) {
 function toInput(d: Date) {
   return d.toISOString().split("T")[0];
 }
-function addDays(d: Date, n: number) {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
-}
+
+// Custom tooltip untuk chart harian
+const DailyTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div style={{
+      backgroundColor: "#111827",
+      border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: "10px",
+      fontSize: "12px",
+      padding: "10px 14px",
+    }}>
+      <p style={{ color: "#9ca3af", margin: "0 0 4px 0" }}>{label}</p>
+      <p style={{ color: "#f59e0b", margin: 0, fontWeight: 600, fontSize: "13px" }}>
+        {fmt(payload[0].value as number)}
+      </p>
+    </div>
+  );
+};
+
+// Custom tooltip untuk peak hour
+const HourTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div style={{
+      backgroundColor: "#111827",
+      border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: "10px",
+      fontSize: "12px",
+      padding: "8px 12px",
+    }}>
+      <p style={{ color: "#9ca3af", margin: "0 0 2px 0" }}>Jam {label}:00</p>
+      <p style={{ color: "#f59e0b", margin: 0, fontWeight: 600 }}>
+        {payload[0].value} transaksi
+      </p>
+    </div>
+  );
+};
 
 export default function LaporanPage() {
   const { data: session, status } = useSession();
@@ -76,7 +116,6 @@ export default function LaporanPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Sync date range saat mode berubah
   useEffect(() => {
     const today = new Date();
     if (mode === "harian") {
@@ -92,7 +131,6 @@ export default function LaporanPage() {
       setDateFrom(toInput(first));
       setDateTo(toInput(today));
     }
-    // custom: biarkan user set sendiri
   }, [mode]);
 
   useEffect(() => {
@@ -140,8 +178,6 @@ export default function LaporanPage() {
   function exportExcel() {
     const rows = buildRows();
     const wb = utils.book_new();
-
-    // Sheet 1: Transaksi
     const ws1 = utils.json_to_sheet(
       rows.map((r) => ({
         No: r.no, Tanggal: r.tanggal, Waktu: r.waktu,
@@ -150,8 +186,6 @@ export default function LaporanPage() {
       }))
     );
     utils.book_append_sheet(wb, ws1, "Transaksi");
-
-    // Sheet 2: Summary
     const ws2 = utils.json_to_sheet([
       { Metrik: "Total Omzet", Nilai: summary?.totalRevenue ?? 0 },
       { Metrik: "Total Transaksi", Nilai: summary?.totalTransactions ?? 0 },
@@ -159,27 +193,22 @@ export default function LaporanPage() {
       { Metrik: "Rata-rata Transaksi", Nilai: summary?.avgTransaction ?? 0 },
     ]);
     utils.book_append_sheet(wb, ws2, "Summary");
-
-    // Sheet 3: Top Produk
     const ws3 = utils.json_to_sheet(
       topProducts.map((p, i) => ({
         Rank: i + 1, Produk: p.name, "Qty Terjual": p.qty, Omzet: p.revenue,
       }))
     );
     utils.book_append_sheet(wb, ws3, "Top Produk");
-
     writeFile(wb, `Laporan_${dateFrom}_${dateTo}.xlsx`);
   }
 
   function exportPDF() {
     const doc = new jsPDF();
     const periode = dateFrom === dateTo ? dateFrom : `${dateFrom} s/d ${dateTo}`;
-
     doc.setFontSize(14);
     doc.text("Laporan Penjualan", 14, 15);
     doc.setFontSize(10);
     doc.text(`Periode: ${periode}`, 14, 22);
-
     if (summary) {
       autoTable(doc, {
         head: [["Metrik", "Nilai"]],
@@ -189,44 +218,47 @@ export default function LaporanPage() {
           ["Total Item", String(summary.totalItems)],
           ["Rata-rata Transaksi", fmtFull(summary.avgTransaction)],
         ],
-        startY: 27,
-        theme: "grid",
+        startY: 27, theme: "grid",
         headStyles: { fillColor: [146, 64, 14] },
-        styles: { fontSize: 9 },
-        tableWidth: 90,
+        styles: { fontSize: 9 }, tableWidth: 90,
       });
     }
-
     if (topProducts.length > 0) {
       autoTable(doc, {
         head: [["Rank", "Produk", "Qty", "Omzet"]],
         body: topProducts.map((p, i) => [i + 1, p.name, p.qty, fmtFull(p.revenue)]),
-        startY: (doc as any).lastAutoTable.finalY + 8,
-        theme: "grid",
+        startY: (doc as any).lastAutoTable.finalY + 8, theme: "grid",
         headStyles: { fillColor: [146, 64, 14] },
-        styles: { fontSize: 9 },
-        tableWidth: 90,
+        styles: { fontSize: 9 }, tableWidth: 90,
       });
     }
-
     autoTable(doc, {
       head: [["No", "Tgl", "Waktu", "ID Trx", "Produk", "Qty", "Harga", "Subtotal"]],
       body: buildRows().map((r) => [
         r.no, r.tanggal, r.waktu, r.idTrx + "...",
         r.namaProduk, r.qty, fmtFull(r.harga), fmtFull(r.subtotal),
       ]),
-      startY: (doc as any).lastAutoTable.finalY + 8,
-      theme: "grid",
+      startY: (doc as any).lastAutoTable.finalY + 8, theme: "grid",
       headStyles: { fillColor: [146, 64, 14] },
       styles: { fontSize: 8 },
     });
-
     doc.save(`Laporan_${dateFrom}_${dateTo}.pdf`);
   }
 
   const rows = buildRows();
-  const maxDaily = Math.max(...dailyChart.map((d) => d.revenue), 1);
-  const maxHour = Math.max(...hourChart.map((h) => h.count), 1);
+
+  // Data chart harian — label pendek
+  const dailyChartData = dailyChart.map((d) => ({
+    name: new Date(d.date).toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
+    omzet: d.revenue,
+    transaksi: d.transactions,
+  }));
+
+  // Data peak hour
+  const hourChartData = hourChart.map((h) => ({
+    name: String(h.hour).padStart(2, "0"),
+    count: h.count,
+  }));
 
   const MODES: { key: Mode; label: string }[] = [
     { key: "harian", label: "Harian" },
@@ -262,38 +294,31 @@ export default function LaporanPage() {
 
         {/* FILTER BAR */}
         <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0 flex-wrap">
-          {/* Mode Toggle */}
           <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
             {MODES.map((m) => (
               <button
                 key={m.key}
                 onClick={() => setMode(m.key)}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                  mode === m.key
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === m.key
                     ? "bg-white text-gray-900 shadow-sm"
                     : "text-gray-500 hover:text-gray-700"
-                }`}
+                  }`}
               >
                 {m.label}
               </button>
             ))}
           </div>
 
-          {/* Date inputs — custom only */}
           {mode === "custom" ? (
             <div className="flex items-center gap-2">
               <input
-                type="date"
-                value={dateFrom}
-                max={dateTo}
+                type="date" value={dateFrom} max={dateTo}
                 onChange={(e) => setDateFrom(e.target.value)}
                 className="px-3 py-1.5 text-xs text-gray-900 border border-gray-200 rounded-lg outline-none focus:border-amber-400"
               />
               <span className="text-xs text-gray-400">—</span>
               <input
-                type="date"
-                value={dateTo}
-                max={toInput(new Date())}
+                type="date" value={dateTo} max={toInput(new Date())}
                 onChange={(e) => setDateTo(e.target.value)}
                 className="px-3 py-1.5 text-xs text-gray-900 border border-gray-200 rounded-lg outline-none focus:border-amber-400"
               />
@@ -304,7 +329,6 @@ export default function LaporanPage() {
             </span>
           )}
 
-          {/* Inline summary */}
           {summary && (
             <div className="flex items-center gap-4 ml-2">
               <span className="text-xs text-gray-500">
@@ -341,39 +365,102 @@ export default function LaporanPage() {
             ))}
           </div>
 
-          {/* CHARTS */}
+          {/* CHARTS ROW */}
           <div className="grid grid-cols-3 gap-3">
 
-            {/* Grafik harian */}
+            {/* AreaChart penjualan harian */}
             <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
-              <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">
-                PENJUALAN PER HARI
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-medium text-gray-400 tracking-wider">
+                  PENJUALAN PER HARI
+                </p>
+              </div>
+
+              {/* Total omzet periode */}
+              <p className="text-2xl font-semibold text-gray-900 mb-4">
+                {fmt(summary?.totalRevenue ?? 0)}
+                <span className="text-xs font-normal text-gray-400 ml-2">periode ini</span>
               </p>
-              {dailyChart.length === 0 ? (
-                <p className="text-xs text-gray-400 py-8 text-center">Tidak ada data.</p>
-              ) : (
-                <div className="flex items-end gap-1.5 h-36">
-                  {dailyChart.map((d) => {
-                    const pct = Math.max(Math.round((d.revenue / maxDaily) * 100), d.revenue > 0 ? 4 : 0);
-                    const label = new Date(d.date).toLocaleDateString("id-ID", { day: "numeric", month: "short" });
-                    return (
-                      <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group relative">
-                        <div className="w-full flex items-end justify-center" style={{ height: 112 }}>
-                          <div
-                            className="w-full rounded-t-md bg-amber-200 group-hover:bg-amber-500 transition-colors"
-                            style={{ height: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="text-[9px] text-gray-400 whitespace-nowrap">{label.split(" ")[0]}</span>
-                        {/* Tooltip */}
-                        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                          {label}: {fmt(d.revenue)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+
+              <div className="w-full h-44">
+                {dailyChartData.length === 0 ? (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-xs text-gray-400">Tidak ada data.</p>
+                  </div>
+                ) : dailyChartData.length === 1 ? (
+                  <div className="h-full flex flex-col items-center justify-center gap-1">
+                    <p className="text-xs text-gray-400">{dailyChartData[0].name}</p>
+                    <p className="text-lg font-semibold text-amber-700">{fmt(dailyChartData[0].omzet)}</p>
+                    <p className="text-xs text-gray-400">{dailyChartData[0].transaksi} transaksi</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={dailyChartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="dailyFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.5} />
+                          <stop offset="60%" stopColor="#BA7517" stopOpacity={0.15} />
+                          <stop offset="100%" stopColor="#BA7517" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+
+                      <CartesianGrid
+                        strokeDasharray="4 4"
+                        stroke="rgba(0,0,0,0.05)"
+                        vertical={false}
+                      />
+
+                      <XAxis
+                        dataKey="name"
+                        fontSize={10}
+                        tick={{ fill: "#9ca3af" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+
+                      <YAxis
+                        fontSize={10}
+                        tick={{ fill: "#9ca3af" }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v) => fmt(v)}
+                        width={64}
+                      />
+
+                      <Tooltip
+                        content={<DailyTooltip />}
+                        cursor={{ stroke: "rgba(186,117,23,0.25)", strokeWidth: 1, strokeDasharray: "4 4" }}
+                      />
+
+                      <Area
+                        type="monotone"
+                        dataKey="omzet"
+                        stroke="#BA7517"
+                        strokeWidth={2.5}
+                        fill="url(#dailyFill)"
+                        dot={(props: any) => {
+                          const { cx, cy, index } = props;
+                          if (cx == null || cy == null) return <g key={index} />;
+                          if (index === 0 || index >= dailyChartData.length) {
+                            return <circle key={index} cx={cx} cy={cy} r={4} fill="#BA7517" stroke="#fff" strokeWidth={2} />;
+                          }
+                          const isUp = dailyChartData[index].omzet >= dailyChartData[index - 1].omzet;
+                          return (
+                            <circle key={index} cx={cx} cy={cy} r={4}
+                              fill={isUp ? "#16a34a" : "#dc2626"}
+                              stroke="#fff" strokeWidth={2}
+                            />
+                          );
+                        }}
+                        activeDot={{ r: 7, fill: "#f59e0b", stroke: "#fff", strokeWidth: 2.5 }}
+                        isAnimationActive={true}
+                        animationDuration={900}
+                        animationEasing="ease-out"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
             </div>
 
             {/* Top produk */}
@@ -382,20 +469,23 @@ export default function LaporanPage() {
               {topProducts.length === 0 ? (
                 <p className="text-xs text-gray-400">Belum ada data.</p>
               ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                   {topProducts.slice(0, 5).map((p, i) => {
                     const maxQty = topProducts[0].qty;
                     const pct = Math.round((p.qty / maxQty) * 100);
                     return (
                       <div key={p.productId}>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-gray-700 truncate max-w-[120px]">
+                          <span className="text-xs text-gray-700 truncate max-w-[130px]">
                             <span className="text-gray-400 mr-1">{i + 1}.</span>{p.name}
                           </span>
                           <span className="text-xs font-medium text-amber-700">{p.qty} pcs</span>
                         </div>
                         <div className="w-full bg-gray-100 rounded-full h-1.5">
-                          <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                          <div
+                            className="bg-amber-500 h-1.5 rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                          />
                         </div>
                       </div>
                     );
@@ -405,34 +495,67 @@ export default function LaporanPage() {
             </div>
           </div>
 
-          {/* JAM RAMAI */}
+          {/* PEAK HOUR — BarChart Recharts */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">JAM RAMAI (PEAK HOUR)</p>
-            <div className="flex items-end gap-1 h-20">
-              {hourChart.map((h) => {
-                const pct = Math.max(Math.round((h.count / maxHour) * 100), h.count > 0 ? 6 : 0);
-                const isActive = h.count === Math.max(...hourChart.map((x) => x.count)) && h.count > 0;
-                return (
-                  <div key={h.hour} className="flex-1 flex flex-col items-center gap-1 group relative">
-                    <div className="w-full flex items-end justify-center" style={{ height: 64 }}>
-                      <div
-                        className={`w-full rounded-t transition-colors ${
-                          isActive ? "bg-amber-600" : "bg-amber-100 group-hover:bg-amber-300"
-                        }`}
-                        style={{ height: `${pct}%` }}
-                      />
-                    </div>
-                    {h.hour % 3 === 0 && (
-                      <span className="text-[8px] text-gray-400">{String(h.hour).padStart(2, "0")}</span>
-                    )}
-                    {h.count > 0 && (
-                      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                        {h.label}: {h.count} trx
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-medium text-gray-400 tracking-wider">JAM RAMAI (PEAK HOUR)</p>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">Distribusi transaksi per jam</p>
+
+            <div className="w-full h-32">
+              {hourChartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-xs text-gray-400">Tidak ada data.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={hourChartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barSize={14}>
+                    <defs>
+                      <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.9} />
+                        <stop offset="100%" stopColor="#BA7517" stopOpacity={0.6} />
+                      </linearGradient>
+                    </defs>
+
+                    <CartesianGrid
+                      strokeDasharray="4 4"
+                      stroke="rgba(0,0,0,0.05)"
+                      vertical={false}
+                    />
+
+                    <XAxis
+                      dataKey="name"
+                      fontSize={9}
+                      tick={{ fill: "#9ca3af" }}
+                      axisLine={false}
+                      tickLine={false}
+                      interval={2}
+                    />
+
+                    <YAxis
+                      fontSize={9}
+                      tick={{ fill: "#9ca3af" }}
+                      axisLine={false}
+                      tickLine={false}
+                      allowDecimals={false}
+                      width={24}
+                    />
+
+                    <Tooltip
+                      content={<HourTooltip />}
+                      cursor={{ fill: "rgba(186,117,23,0.06)" }}
+                    />
+
+                    <Bar
+                      dataKey="count"
+                      fill="url(#barFill)"
+                      radius={[4, 4, 0, 0]}
+                      isAnimationActive={true}
+                      animationDuration={800}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 

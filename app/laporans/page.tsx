@@ -56,8 +56,8 @@ function getRange(mode: Mode): { from: string; to: string } {
 
 export default function LaporanShiftPage() {
   const { data: session } = useSession();
-  const { demoStoreId } = useDemoMode();
-  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
+  const { demoStoreId, isDemoMode } = useDemoMode();
+  const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
 
   const [mode, setMode] = useState<Mode>("harian");
   const [dateFrom, setDateFrom] = useState(toInput(new Date()));

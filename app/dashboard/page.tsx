@@ -65,7 +65,8 @@ export default function DashboardPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const { demoStoreId, isDemoMode } = useDemoMode();
-  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
+  const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+  const pushWithMode = (href: string) => router.push(isDemoMode ? `${href}?demo=true` : href);
 
   const [recentTxns, setRecentTxns] = useState<DashTxn[]>(emptyTxn);
   const [stockList, setStockList] = useState<DashStock[]>(emptyStock);
@@ -190,7 +191,7 @@ export default function DashboardPage() {
           <span className="text-sm font-medium text-gray-900">Dashboard</span>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
-              {(session?.user as any)?.email ?? (isDemoMode ? "demo@tokoku.local" : "Kopi Nusantara")}
+              {isDemoMode ? "demo@tokoku.local" : (session?.user as any)?.email ?? "Kopi Nusantara"}
             </span>
             <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
               {getToday()}
@@ -386,7 +387,7 @@ export default function DashboardPage() {
             {/* Quick Actions */}
             <div className="flex flex-col gap-3">
               <button
-                onClick={() => router.push("/kasir")}
+                onClick={() => pushWithMode("/kasir")}
                 className="bg-amber-700 text-white rounded-xl p-4 flex items-center gap-3 hover:bg-amber-800 transition-colors text-left"
               >
                 <div className="w-8 h-8 bg-amber-600 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -402,7 +403,7 @@ export default function DashboardPage() {
               </button>
 
               <button
-                onClick={() => router.push("/product")}
+                onClick={() => pushWithMode("/product")}
                 className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-3 hover:border-gray-200 transition-colors text-left"
               >
                 <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -418,7 +419,7 @@ export default function DashboardPage() {
               </button>
 
               <button
-                onClick={() => router.push("/laporan")}
+                onClick={() => pushWithMode("/laporan")}
                 className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-3 hover:border-gray-200 transition-colors text-left"
               >
                 <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center flex-shrink-0">

@@ -110,8 +110,9 @@ const TAG_DOT: Record<string, string> = {
 export default function PromoAdminPage() {
   const { data: session } = useSession();
   const router = useRouter();
-  const { demoStoreId } = useDemoMode();
-  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
+  const { demoStoreId, isDemoMode } = useDemoMode();
+  const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+  const pushWithMode = (href: string) => router.push(isDemoMode ? `${href}?demo=true` : href);
 
   const [promos, setPromos] = useState<Promo[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -310,7 +311,7 @@ export default function PromoAdminPage() {
       <header className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/dashboard")}
+            onClick={() => pushWithMode("/dashboard")}
             className="text-gray-400 hover:text-gray-700 transition-colors"
           >
             <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" strokeWidth={1.8} stroke="currentColor">

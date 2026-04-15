@@ -63,8 +63,8 @@ function addDays(d: Date, n: number) {
 
 export default function LaporanPage() {
   const { data: session, status } = useSession();
-  const { demoStoreId } = useDemoMode();
-  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
+  const { demoStoreId, isDemoMode } = useDemoMode();
+  const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
 
   const [mode, setMode] = useState<Mode>("harian");
   const [dateFrom, setDateFrom] = useState(toInput(new Date()));

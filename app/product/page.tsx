@@ -41,8 +41,8 @@ type StockFilter = "all" | "ok" | "low" | "empty";
 
 export default function ProdukPage() {
   const { data: session } = useSession();
-  const { demoStoreId } = useDemoMode();
-  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
+  const { demoStoreId, isDemoMode } = useDemoMode();
+  const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
 
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch]     = useState("");
@@ -84,11 +84,34 @@ export default function ProdukPage() {
 
   // ── Fetch produk ──────────────────────────────────────────────
   useEffect(() => {
-    if (!storeId) return;
+    if (!storeId) {
+      setProducts([]);
+      setSelected(new Set());
+      return;
+    }
+
+    setProducts([]);
+    setSelected(new Set());
     fetch(`/api/products?storeId=${storeId}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setProducts(d); })
       .catch(() => showToast("Gagal memuat produk", "err"));
+  }, [storeId]);
+
+  useEffect(() => {
+    setSearch("");
+    setCatFilter("all");
+    setStockFilter("all");
+    setSortKey("name");
+    setInlineEdit(null);
+    setInlineVal("");
+    setBulkAction("");
+    setBulkCat("");
+    setBulkPrice("");
+    setDeleteConfirm(null);
+    setShowModal(false);
+    setEditTarget(null);
+    setForm(emptyForm);
   }, [storeId]);
 
   // ── Fetch daftar kamera saat halaman load ─────────────────────

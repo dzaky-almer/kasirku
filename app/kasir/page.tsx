@@ -139,9 +139,10 @@ function promoDiscLabel(promo: Promo): string {
 export default function KasirPage() {
   const router = useRouter();
   const { data: session } = useSession();
-  const { demoStoreId, demoUserId } = useDemoMode();
-  const storeId = (session?.user as any)?.storeId ?? demoStoreId;
-  const userId = session?.user?.id ?? demoUserId;
+  const { demoStoreId, demoUserId, isDemoMode } = useDemoMode();
+  const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+  const userId = isDemoMode ? demoUserId : session?.user?.id ?? "";
+  const pushWithMode = (href: string) => router.push(isDemoMode ? `${href}?demo=true` : href);
   const strutRef = useRef<HTMLDivElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -173,7 +174,12 @@ export default function KasirPage() {
   const [showPromoPanel, setShowPromoPanel] = useState(false);
 
   useEffect(() => {
-    if (!storeId) return;
+    if (!storeId) {
+      setProducts([]);
+      return;
+    }
+
+    setProducts([]);
     fetch(`/api/products?storeId=${storeId}`)
       .then((res) => res.json())
       .then((data) => {
@@ -184,6 +190,12 @@ export default function KasirPage() {
   }, [storeId]);
 
   useEffect(() => {
+    if (!storeId) {
+      setShift(null);
+      return;
+    }
+
+    setShift(null);
     fetch(`/api/shifts/current?storeId=${encodeURIComponent(storeId)}`)
       .then(async (res) => {
         const data = await res.json().catch(() => null);
@@ -194,13 +206,28 @@ export default function KasirPage() {
   }, [storeId]);
 
   useEffect(() => {
-    if (!storeId) return;
+    if (!storeId) {
+      setPromos([]);
+      return;
+    }
+
+    setPromos([]);
     fetch(`/api/promos?storeId=${storeId}`)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setPromos(data);
       })
       .catch(() => {});
+  }, [storeId]);
+
+  useEffect(() => {
+    setCart([]);
+    setSelectedPromo(null);
+    setShowPromoPanel(false);
+    setLastTransaction(null);
+    setShowStruk(false);
+    setSuccess(false);
+    setPaid("");
   }, [storeId]);
 
   // ── KALKULASI ────────────────────────────────────────────
@@ -327,7 +354,7 @@ export default function KasirPage() {
   <table>
     <tr><td>No. Transaksi</td><td style="text-align:right">#${trxId.toUpperCase()}</td></tr>
     <tr><td>Tanggal</td><td style="text-align:right">${trxTime}</td></tr>
-    <tr><td>Kasir</td><td style="text-align:right">${session?.user?.name ?? "Kasir"}</td></tr>
+    <tr><td>Kasir</td><td style="text-align:right">${isDemoMode ? "Kasir Demo" : session?.user?.name ?? "Kasir"}</td></tr>
   </table>
   <div class="divider-dash"></div>
   <table>${itemRows}</table>
@@ -495,7 +522,7 @@ export default function KasirPage() {
                 })}
               </span>
               <button
-                onClick={() => router.push("/dashboard")}
+                onClick={() => pushWithMode("/dashboard")}
                 className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
               >
                 ← Dashboard
@@ -903,7 +930,7 @@ export default function KasirPage() {
                   Transaksi Berikutnya
                 </button>
                 <button
-                  onClick={() => router.push("/dashboard")}
+                  onClick={() => pushWithMode("/dashboard")}
                   className="w-full py-2 bg-white text-gray-500 text-sm font-medium rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
                 >
                   Kembali ke Dashboard

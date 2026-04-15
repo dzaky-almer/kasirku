@@ -1,26 +1,35 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { canAccessStore } from "@/lib/store-access";
 
 export async function POST(req: Request) {
   const session = await auth();
   const userId = session?.user?.id;
   const { shiftId, closing_cash, notes } = await req.json();
 
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const shift = await prisma.shift.findFirst({
-    where: {
-      id: shiftId,
-      userId,
-      status: "OPEN",
+  const existingShift = await prisma.shift.findUnique({
+    where: { id: shiftId },
+    select: {
+      id: true,
+      userId: true,
+      storeId: true,
+      opening_cash: true,
+      status: true,
     },
   });
 
-  if (!shift) {
+  if (!existingShift || existingShift.status !== "OPEN") {
     return Response.json(
-      { error: "Shift tidak ditemukan atau bukan milik akun ini" },
+      { error: "Shift tidak ditemukan atau sudah ditutup" },
+      { status: 404 }
+    );
+  }
+
+  const store = await canAccessStore(existingShift.storeId, userId);
+
+  if (!store) {
+    return Response.json(
+      { error: "Shift tidak ditemukan atau tidak bisa diakses" },
       { status: 403 }
     );
   }
@@ -34,7 +43,7 @@ export async function POST(req: Request) {
   const totalSales = transactionSummary._sum.total ?? 0;
 
   const updatedShift = await prisma.shift.update({
-    where: { id: shiftId },
+    where: { id: existingShift.id },
     data: {
       closing_cash,
       total_sales: totalSales,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { formatDateInput, getDateRangeForDay } from "@/lib/date";
+import { canAccessStore } from "@/lib/store-access";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -12,22 +13,15 @@ export async function GET(req: Request) {
   const dateTo = searchParams.get("dateTo");
   const date = searchParams.get("date");
 
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   if (!storeId) {
     return NextResponse.json({ error: "storeId wajib diisi" }, { status: 400 });
   }
 
-  const store = await prisma.store.findFirst({
-    where: { id: storeId, userId },
-    select: { id: true },
-  });
+  const store = await canAccessStore(storeId, userId);
 
   if (!store) {
     return NextResponse.json(
-      { error: "Store tidak ditemukan atau bukan milik akun ini" },
+      { error: "Store tidak ditemukan atau tidak bisa diakses" },
       { status: 403 }
     );
   }

@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { canAccessStore } from "@/lib/store-access";
 
 export async function POST(req: Request) {
   try {
@@ -7,10 +8,6 @@ export async function POST(req: Request) {
     const sessionUserId = session?.user?.id;
     const body = await req.json();
     const { opening_cash, storeId, cashierName } = body;
-
-    if (!sessionUserId) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     if (!storeId) {
       return Response.json({ error: "storeId wajib" }, { status: 400 });
@@ -30,26 +27,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const store = await prisma.store.findFirst({
-      where: {
-        id: storeId,
-        userId: sessionUserId,
-      },
-      select: { id: true },
-    });
+    const store = await canAccessStore(storeId, sessionUserId);
 
     if (!store) {
       return Response.json(
-        { error: "Store tidak ditemukan atau bukan milik akun ini" },
+        { error: "Store tidak ditemukan atau tidak bisa diakses" },
         { status: 403 }
       );
     }
 
     const existing = await prisma.shift.findFirst({
       where: {
-        userId: sessionUserId,
         storeId,
         status: "OPEN",
+        ...(store.isDemo ? {} : { userId: sessionUserId }),
       },
     });
 
@@ -65,7 +56,7 @@ export async function POST(req: Request) {
         opening_cash,
         cashierName,
         status: "OPEN",
-        userId: sessionUserId,
+        userId: store.userId,
         storeId,
       },
     });

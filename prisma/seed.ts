@@ -41,6 +41,7 @@ async function main() {
           create: {
             name: `Kopi Cabang ${u}`,
             type: "cafe",
+            isDemo: u === 1,
           },
         },
       },
@@ -48,6 +49,13 @@ async function main() {
     });
 
     const store = user.stores[0];
+    await prisma.store.update({
+      where: { id: store.id },
+      data: {
+        isDemo: u === 1,
+      },
+    });
+
     const storeId = store.id;
     const userId = user.id;
 

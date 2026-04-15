@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { getDateRangeForDay } from "@/lib/date";
+import { canAccessStore } from "@/lib/store-access";
 
 interface CartItemInput {
   productId: string;
@@ -34,10 +35,6 @@ export async function POST(req: Request) {
     discountAmount?: number;
   };
 
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   if (!shiftId) {
     return NextResponse.json({ error: "Shift belum dibuka" }, { status: 400 });
   }
@@ -59,21 +56,18 @@ export async function POST(req: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const store = await tx.store.findFirst({
-        where: { id: storeId, userId },
-        select: { id: true },
-      });
+      const store = await canAccessStore(storeId, userId);
 
       if (!store) {
-        throw new Error("Store tidak ditemukan atau bukan milik akun ini");
+        throw new Error("Store tidak ditemukan atau tidak bisa diakses");
       }
 
       const shift = await tx.shift.findFirst({
         where: {
           id: shiftId,
           storeId,
-          userId,
           status: "OPEN",
+          ...(store.isDemo ? {} : { userId }),
         },
         select: { id: true },
       });
@@ -176,22 +170,15 @@ export async function GET(req: Request) {
   const storeId = searchParams.get("storeId");
   const date = searchParams.get("date");
 
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   if (!storeId) {
     return NextResponse.json({ error: "storeId wajib diisi" }, { status: 400 });
   }
 
-  const store = await prisma.store.findFirst({
-    where: { id: storeId, userId },
-    select: { id: true },
-  });
+  const store = await canAccessStore(storeId, userId);
 
   if (!store) {
     return NextResponse.json(
-      { error: "Store tidak ditemukan atau bukan milik akun ini" },
+      { error: "Store tidak ditemukan atau tidak bisa diakses" },
       { status: 403 }
     );
   }

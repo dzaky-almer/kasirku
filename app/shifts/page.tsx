@@ -15,7 +15,7 @@ interface Shift {
 
 export default function ShiftsPage() {
   const { data: session, status } = useSession();
-  const { demoStoreId, demoUserId } = useDemoMode();
+  const { demoStoreId, demoUserId, isDemoMode } = useDemoMode();
 
   const [openShift, setOpenShift] = useState<Shift | null>(null);
   const [openingCash, setOpeningCash] = useState<number>(0);
@@ -27,7 +27,8 @@ export default function ShiftsPage() {
   // 🔥 FETCH SHIFT AKTIF
   const fetchShift = async () => {
     try {
-      const activeStoreId = (session?.user as any)?.storeId ?? demoStoreId;
+      const activeStoreId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+      if (!activeStoreId) return;
       const res = await fetch(`/api/shifts/current?storeId=${encodeURIComponent(activeStoreId ?? "")}`);
       const data = await res.json();
       setOpenShift(data?.id ? data : null);
@@ -37,15 +38,15 @@ export default function ShiftsPage() {
   };
 
   useEffect(() => {
-    if (status === "authenticated" || demoStoreId) {
+    if ((status === "authenticated" && !isDemoMode) || demoStoreId) {
       fetchShift();
     }
-  }, [status, demoStoreId, session]);
+  }, [status, demoStoreId, isDemoMode, session]);
 
   // 🟢 OPEN SHIFT
   const handleOpenShift = async () => {
-    const userId = session?.user?.id ?? demoUserId;
-    const storeId = (session?.user as any)?.storeId ?? demoStoreId;
+    const userId = isDemoMode ? demoUserId : session?.user?.id ?? "";
+    const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
 
     if (!userId || !storeId) {
       alert("Session belum siap 😭");

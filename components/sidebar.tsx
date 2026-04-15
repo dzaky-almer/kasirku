@@ -76,7 +76,7 @@ const navItems = [
   }
 ];
 
-const hiddenOn = ["/login", "/register"];
+const hiddenOn = ["/login", "/register", "/home"];
 
 export default function Sidebar() {
   const pathname = usePathname();

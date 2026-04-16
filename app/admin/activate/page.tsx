@@ -35,6 +35,7 @@ export default function AdminActivatePage() {
 
   const [loadingCodes, setLoadingCodes] = useState(false);
   const [unusedCodes, setUnusedCodes] = useState<UnusedCode[]>([]);
+  const [copyNotice, setCopyNotice] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -128,9 +129,24 @@ export default function AdminActivatePage() {
     }
   }
 
-  function copyToClipboard(text: string) {
-    navigator.clipboard.writeText(text);
+  async function copyToClipboard(text: string, label = "Kode berhasil disalin") {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyNotice(label);
+    } catch {
+      setCopyNotice("Gagal menyalin. Coba lagi.");
+    }
   }
+
+  useEffect(() => {
+    if (!copyNotice) return;
+
+    const timer = window.setTimeout(() => {
+      setCopyNotice("");
+    }, 2200);
+
+    return () => window.clearTimeout(timer);
+  }, [copyNotice]);
 
   // JANGAN RENDER APAPUN sebelum mounted agar sinkron dengan server
   if (!mounted) return <div className="flex-1 bg-slate-50" />;
@@ -177,6 +193,12 @@ export default function AdminActivatePage() {
   // RENDER DASHBOARD UTAMA
   return (
     <main className="flex-1 overflow-y-auto bg-slate-50 p-6 text-slate-900">
+      {copyNotice && (
+        <div className="fixed top-5 right-5 z-50 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-2xl shadow-slate-900/20">
+          {copyNotice}
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -264,7 +286,7 @@ export default function AdminActivatePage() {
                   {r.code}
                 </code>
                 <button
-                  onClick={() => copyToClipboard(r.code)}
+                  onClick={() => copyToClipboard(r.code, "Kode referral berhasil disalin")}
                   className="text-[10px] bg-slate-900 text-white px-3 py-1 rounded-lg"
                 >
                   Copy Kode

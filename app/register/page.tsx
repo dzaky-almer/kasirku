@@ -5,7 +5,7 @@
 // REPLACE file lama dengan ini
 // ============================================================
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
@@ -60,7 +60,6 @@ export default function RegisterPage() {
     if (refFromUrl) {
       checkReferralCode(refFromUrl.toUpperCase());
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refFromUrl]);
 
   // Debounce check kode referral saat user ketik
@@ -185,7 +184,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50/30 flex items-center justify-center px-4 py-12">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gradient-to-br from-amber-50 via-white to-orange-50/30 flex items-start justify-center px-4 py-8 md:py-12">
       <div className="w-full max-w-md">
 
         {/* Logo */}
@@ -323,21 +322,21 @@ export default function RegisterPage() {
                   <label className="text-xs font-bold text-slate-600 mb-1.5 block">Nama Pemilik Toko *</label>
                   <input type="text" value={ownerName} onChange={(e) => setOwnerName(e.target.value)}
                     placeholder="Ahmad Fauzi"
-                    className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
+                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
                   />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-600 mb-1.5 block">Email *</label>
                   <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                     placeholder="kamu@gmail.com"
-                    className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
+                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
                   />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-600 mb-1.5 block">No. WhatsApp *</label>
                   <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
                     placeholder="628123456789"
-                    className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition font-mono"
+                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition font-mono"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">Format: 628xxxxxxxxx (tanpa tanda +)</p>
                 </div>
@@ -345,14 +344,14 @@ export default function RegisterPage() {
                   <label className="text-xs font-bold text-slate-600 mb-1.5 block">Password * (min. 8 karakter)</label>
                   <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
+                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
                   />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-600 mb-1.5 block">Konfirmasi Password *</label>
                   <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className={`w-full px-4 py-3 text-sm border rounded-2xl outline-none transition ${
+                      className={`w-full px-4 py-3 text-sm text-slate-900 border rounded-2xl outline-none transition ${
                       confirmPassword && password !== confirmPassword
                         ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
                         : "border-slate-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
@@ -394,7 +393,7 @@ export default function RegisterPage() {
                   <label className="text-xs font-bold text-slate-600 mb-1.5 block">Nama Toko *</label>
                   <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)}
                     placeholder="Barbershop Keren"
-                    className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
+                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
                   />
                 </div>
 
@@ -402,7 +401,7 @@ export default function RegisterPage() {
                   <div>
                     <label className="text-xs font-bold text-slate-600 mb-1.5 block">Jenis Toko</label>
                     <select value={storeType} onChange={(e) => setStoreType(e.target.value)}
-                      className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 bg-white"
+                      className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 bg-white"
                     >
                       <option value="cafe">Cafe</option>
                       <option value="barbershop">Barbershop</option>
@@ -416,7 +415,7 @@ export default function RegisterPage() {
                     <label className="text-xs font-bold text-slate-600 mb-1.5 block">No. WA Toko</label>
                     <input type="tel" value={waNumber} onChange={(e) => setWaNumber(e.target.value)}
                       placeholder="628xxx"
-                      className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 transition font-mono"
+                      className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 transition font-mono"
                     />
                   </div>
                 </div>
@@ -425,7 +424,7 @@ export default function RegisterPage() {
                   <label className="text-xs font-bold text-slate-600 mb-1.5 block">Alamat Toko</label>
                   <input type="text" value={storeAddress} onChange={(e) => setStoreAddress(e.target.value)}
                     placeholder="Jl. Contoh No. 1, Jakarta"
-                    className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 transition"
+                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 transition"
                   />
                 </div>
 
@@ -456,14 +455,14 @@ export default function RegisterPage() {
                         <label className="text-[10px] font-bold text-slate-500 mb-1 block">Server Key</label>
                         <input type="text" value={midtransServerKey} onChange={(e) => setMidtransServerKey(e.target.value)}
                           placeholder="SB-Mid-server-XXXXXXXX atau Mid-server-XXXXXXXX"
-                          className="w-full px-3 py-2 text-xs border border-blue-200 rounded-xl outline-none focus:border-amber-400 font-mono"
+                          className="w-full px-3 py-2 text-xs text-slate-900 border border-blue-200 rounded-xl outline-none focus:border-amber-400 font-mono"
                         />
                       </div>
                       <div>
                         <label className="text-[10px] font-bold text-slate-500 mb-1 block">Client Key</label>
                         <input type="text" value={midtransClientKey} onChange={(e) => setMidtransClientKey(e.target.value)}
                           placeholder="SB-Mid-client-XXXXXXXX atau Mid-client-XXXXXXXX"
-                          className="w-full px-3 py-2 text-xs border border-blue-200 rounded-xl outline-none focus:border-amber-400 font-mono"
+                          className="w-full px-3 py-2 text-xs text-slate-900 border border-blue-200 rounded-xl outline-none focus:border-amber-400 font-mono"
                         />
                       </div>
                     </div>

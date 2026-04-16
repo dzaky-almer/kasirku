@@ -2,28 +2,20 @@
 
 // ============================================================
 // LOKASI: components/DemoExpiredPopup.tsx
-//
-// CARA PAKAI:
-// Import di app/dashboard/page.tsx dan app/kasir/page.tsx:
-//   import DemoExpiredPopup from '@/components/DemoExpiredPopup'
-//   // Di dalam return JSX:
-//   <DemoExpiredPopup />
-//
-// KONFIGURASI WAKTU DI .env:
-//   NEXT_PUBLIC_DEMO_DURATION_HOURS=1   (default: 1 jam)
-//   NEXT_PUBLIC_DEMO_DURATION_HOURS=0.1 (untuk testing: 6 menit)
 // ============================================================
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useSearchParams, usePathname } from "next/navigation";
 import { ensureDemoSession, getDemoDurationMs, persistDemoMeta, readDemoMeta, useDemoMode } from "@/lib/demo";
 
 // ── HOOK: useDemoTimer ─────────────────────────────────────────
 export function useDemoTimer() {
   useSearchParams();
-  const { isDemoMode } = useDemoMode();
+  const { isDemoMode, demoMeta } = useDemoMode();
 
   const [expired, setExpired] = useState(false);
+  const [timeLabel, setTimeLabel] = useState("--:--");
   const [remainingMs, setRemainingMs] = useState(getDemoDurationMs());
   const [sessionKey, setSessionKey] = useState<string>("");
 
@@ -36,35 +28,34 @@ export function useDemoTimer() {
 
       persistDemoMeta(meta);
       setSessionKey(meta.sessionKey);
-      setRemainingMs(meta.remainingMs ?? getDemoDurationMs());
       setExpired(false);
     };
 
     void initSession();
   }, [isDemoMode]);
 
-  // Countdown timer
   useEffect(() => {
-    if (!isDemoMode || !sessionKey) return;
+    const expiresAt = demoMeta?.expiresAt;
+    if (!isDemoMode || !expiresAt) return;
 
-    const tick = setInterval(() => {
-      setRemainingMs((prev) => {
-        const next = prev - 1000;
-        if (next <= 0) {
-          setExpired(true);
-          return 0;
-        }
-        return next;
-      });
-    }, 1000);
+    const tick = () => {
+      const diff = new Date(expiresAt).getTime() - Date.now();
+      if (diff <= 0) {
+        setExpired(true);
+        setRemainingMs(0);
+        setTimeLabel("00:00");
+        return;
+      }
+      const m = Math.floor(diff / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setRemainingMs(diff);
+      setTimeLabel(`${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
+    };
 
-    return () => clearInterval(tick);
-  }, [isDemoMode, sessionKey]);
-
-  // Format waktu tersisa
-  const minutes = Math.floor(remainingMs / 60000);
-  const seconds = Math.floor((remainingMs % 60000) / 1000);
-  const timeLabel = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [isDemoMode, demoMeta?.expiresAt]);
 
   return {
     isDemoMode,
@@ -85,29 +76,34 @@ export function useDemoTimer() {
 }
 
 // ── KOMPONEN: DemoTimerBanner ──────────────────────────────────
-// Banner kecil di atas dashboard yang tampilkan countdown
 export function DemoTimerBanner() {
   const { isDemoMode, timeLabel, remainingMs } = useDemoTimer();
+  const router = useRouter();
+  const pathname = usePathname();
 
-  if (!isDemoMode) return null;
+  if (!isDemoMode || !pathname.startsWith("/dashboard")) return null;
 
-  const isWarning = remainingMs < 5 * 60 * 1000; // < 5 menit
+  const isWarning = remainingMs < 5 * 60 * 1000;
 
   return (
-    <div className={`flex items-center justify-between px-4 py-2 text-xs font-bold ${
-      isWarning
-        ? "bg-red-500 text-white"
-        : "bg-amber-600 text-white"
+    <div className={`flex items-center justify-between px-4 py-2 text-xs font-bold flex-shrink-0 ${
+      isWarning ? "bg-red-500 text-white" : "bg-amber-600 text-white"
     }`}>
       <div className="flex items-center gap-2">
         <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
         <span>MODE DEMO — Data akan direset otomatis</span>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <span className="font-mono text-sm">⏱ {timeLabel}</span>
-        <a
-          href="/home#harga"
+        <button
+          onClick={() => router.push("/home")}
           className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg transition text-[10px] uppercase tracking-wider"
+        >
+          Beranda
+        </button>
+        
+        <a href="/home#harga"
+          className="bg-white text-amber-700 hover:bg-amber-50 px-3 py-1 rounded-lg transition text-[10px] uppercase tracking-wider font-black"
         >
           Berlangganan
         </a>
@@ -117,12 +113,12 @@ export function DemoTimerBanner() {
 }
 
 // ── KOMPONEN: DemoExpiredPopup ─────────────────────────────────
-// Popup fullscreen saat sesi demo habis
 export default function DemoExpiredPopup() {
   const { isDemoMode, expired, resetSession } = useDemoTimer();
+  const pathname = usePathname();
   const [resetting, setResetting] = useState(false);
 
-  if (!isDemoMode || !expired) return null;
+  if (!isDemoMode || !expired || !pathname.startsWith("/demo")) return null;
 
   const handleReset = async () => {
     setResetting(true);
@@ -143,8 +139,8 @@ export default function DemoExpiredPopup() {
         </p>
 
         <div className="flex flex-col gap-3">
-          <a
-            href="/home#harga"
+          
+          <a href="/home#harga"
             className="w-full py-3.5 bg-amber-700 text-white rounded-2xl font-black hover:bg-amber-800 transition text-sm block"
           >
             🚀 Lihat Paket Berlangganan
@@ -165,9 +161,7 @@ export default function DemoExpiredPopup() {
             )}
           </button>
 
-          <a href="/register"
-            className="text-xs text-amber-700 font-bold hover:underline"
-          >
+          <a href="/register" className="text-xs text-amber-700 font-bold hover:underline">
             Punya kode referral? Daftar sekarang →
           </a>
         </div>

@@ -154,15 +154,18 @@ export function useDemoMode() {
   const hasDemoQuery = searchParams.get("demo") === "true";
 
   useEffect(() => {
+    // Tidak ada ?demo=true DAN tidak ada sesi tersimpan → skip
     if (!hasDemoQuery && !demoMeta?.sessionKey) return;
+
+    // Sudah ada sesi di localStorage tapi tidak ada ?demo=true →
+    // biarkan saja, timer tetap jalan di halaman manapun
+    if (!hasDemoQuery && demoMeta?.sessionKey) return;
 
     let cancelled = false;
 
     const load = async () => {
       const nextMeta = await ensureDemoSession(demoMeta?.sessionKey);
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
 
       if (nextMeta) {
         persistDemoMeta(nextMeta);
@@ -178,7 +181,8 @@ export function useDemoMode() {
     };
   }, [demoMeta?.sessionKey, hasDemoQuery, searchParams]);
 
-  const isDemoMode = hasDemoQuery || Boolean(demoMeta?.sessionKey);
+  // isDemoMode aktif selama ada sessionKey di localStorage
+  const isDemoMode = Boolean(demoMeta?.sessionKey) || hasDemoQuery;
 
   return {
     isDemoMode,

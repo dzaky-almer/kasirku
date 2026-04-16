@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 
 export const DEMO_SESSION_KEY = "tokoku_demo_session";
@@ -25,30 +25,69 @@ function hasStorage() {
   return typeof window !== "undefined";
 }
 
+function emitDemoMetaChange() {
+  if (!hasStorage()) return;
+  window.dispatchEvent(new Event("demo-meta-change"));
+}
+
+function subscribeDemoMeta(onStoreChange: () => void) {
+  if (!hasStorage()) {
+    return () => undefined;
+  }
+
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener("demo-meta-change", onStoreChange);
+
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener("demo-meta-change", onStoreChange);
+  };
+}
+
+// Cache untuk menghindari infinite loop pada useSyncExternalStore.
+// readDemoMeta harus return referensi yang sama selama data tidak berubah.
+let _cachedRaw: string | null = undefined!;
+let _cachedMeta: DemoMeta | null = null;
+
 export function readDemoMeta(): DemoMeta | null {
   if (!hasStorage()) return null;
 
   const raw = window.localStorage.getItem(DEMO_META_KEY);
-  if (!raw) return null;
 
-  try {
-    return JSON.parse(raw) as DemoMeta;
-  } catch {
-    window.localStorage.removeItem(DEMO_META_KEY);
+  // Hanya parse ulang kalau isi localStorage benar-benar berubah
+  if (raw === _cachedRaw) return _cachedMeta;
+
+  _cachedRaw = raw;
+
+  if (!raw) {
+    _cachedMeta = null;
     return null;
   }
+
+  try {
+    _cachedMeta = JSON.parse(raw) as DemoMeta;
+  } catch {
+    window.localStorage.removeItem(DEMO_META_KEY);
+    _cachedMeta = null;
+  }
+
+  return _cachedMeta;
 }
 
 export function persistDemoMeta(meta: DemoMeta) {
   if (!hasStorage()) return;
   window.localStorage.setItem(DEMO_SESSION_KEY, meta.sessionKey);
   window.localStorage.setItem(DEMO_META_KEY, JSON.stringify(meta));
+  _cachedRaw = undefined!; // Invalidate cache agar readDemoMeta parse ulang
+  emitDemoMetaChange();
 }
 
 export function clearDemoMeta() {
   if (!hasStorage()) return;
   window.localStorage.removeItem(DEMO_SESSION_KEY);
   window.localStorage.removeItem(DEMO_META_KEY);
+  _cachedRaw = undefined!; // Invalidate cache agar readDemoMeta parse ulang
+  emitDemoMetaChange();
 }
 
 type DemoApiResponse = DemoMeta & {
@@ -110,20 +149,25 @@ export async function ensureDemoSession(existingSessionKey?: string | null): Pro
 
 export function useDemoMode() {
   const searchParams = useSearchParams();
-  const [demoMeta, setDemoMeta] = useState<DemoMeta | null>(() => readDemoMeta());
+  const demoMeta = useSyncExternalStore(subscribeDemoMeta, readDemoMeta, () => null);
+
+  const hasDemoQuery = searchParams.get("demo") === "true";
 
   useEffect(() => {
-    const hasDemoQuery = searchParams.get("demo") === "true";
-    const storedMeta = readDemoMeta();
-
-    if (!hasDemoQuery && !storedMeta?.sessionKey) return;
+    if (!hasDemoQuery && !demoMeta?.sessionKey) return;
 
     let cancelled = false;
 
     const load = async () => {
-      const nextMeta = await ensureDemoSession(storedMeta?.sessionKey);
-      if (!cancelled) {
-        setDemoMeta(nextMeta);
+      const nextMeta = await ensureDemoSession(demoMeta?.sessionKey);
+      if (cancelled) {
+        return;
+      }
+
+      if (nextMeta) {
+        persistDemoMeta(nextMeta);
+      } else {
+        clearDemoMeta();
       }
     };
 
@@ -132,9 +176,8 @@ export function useDemoMode() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams]);
+  }, [demoMeta?.sessionKey, hasDemoQuery, searchParams]);
 
-  const hasDemoQuery = searchParams.get("demo") === "true";
   const isDemoMode = hasDemoQuery || Boolean(demoMeta?.sessionKey);
 
   return {
@@ -148,7 +191,6 @@ export function useDemoMode() {
       } else {
         clearDemoMeta();
       }
-      setDemoMeta(meta);
     },
   };
 }

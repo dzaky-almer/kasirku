@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation";
 import { useSearchParams, usePathname } from "next/navigation";
 import { ensureDemoSession, getDemoDurationMs, persistDemoMeta, readDemoMeta, useDemoMode } from "@/lib/demo";
 
+const PUBLIC_PATHS = new Set(["/", "/home", "/login", "/register", "/admin/activate"]);
+
 // ── HOOK: useDemoTimer ─────────────────────────────────────────
 export function useDemoTimer() {
   useSearchParams();
@@ -81,7 +83,7 @@ export function DemoTimerBanner() {
   const router = useRouter();
   const pathname = usePathname();
 
-  if (!isDemoMode || !pathname.startsWith("/dashboard")) return null;
+  if (!isDemoMode || PUBLIC_PATHS.has(pathname)) return null;
 
   const isWarning = remainingMs < 5 * 60 * 1000;
 
@@ -118,7 +120,7 @@ export default function DemoExpiredPopup() {
   const pathname = usePathname();
   const [resetting, setResetting] = useState(false);
 
-  if (!isDemoMode || !expired || !pathname.startsWith("/demo")) return null;
+  if (!isDemoMode || !expired || PUBLIC_PATHS.has(pathname)) return null;
 
   const handleReset = async () => {
     setResetting(true);

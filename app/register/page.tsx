@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
+import { clearDemoMeta } from "@/lib/demo";
 
 type Step = 1 | 2 | 3;
 
@@ -154,6 +155,8 @@ export default function RegisterPage() {
         setLoading(false);
         return;
       }
+
+      clearDemoMeta();
 
       // Auto login setelah register berhasil
       const login = await signIn("credentials", {

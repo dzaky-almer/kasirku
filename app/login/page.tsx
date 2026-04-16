@@ -9,6 +9,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { clearDemoMeta } from "@/lib/demo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,6 +38,7 @@ export default function LoginPage() {
     if (res?.error) {
       setError("Email atau password salah.");
     } else {
+      clearDemoMeta();
       router.push("/dashboard");
     }
   }

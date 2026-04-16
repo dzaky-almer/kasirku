@@ -30,7 +30,7 @@ async function main() {
 
   console.log("START SEEDING FULL...");
 
-  for (let u = 1; u <= 5; u++) {
+  for (let u = 6; u <= 30; u++) {
     const user = await prisma.user.upsert({
       where: { email: `user${u}@kopi.com` },
       update: {},
@@ -68,7 +68,7 @@ async function main() {
     if (productList.length === 0) {
       const products = [];
 
-      for (let p = 1; p <= 30; p++) {
+      for (let p = 1; p <= 5; p++) {
         products.push({
           name: `Menu ${p}`,
           price: random(10000, 50000),
@@ -92,7 +92,7 @@ async function main() {
 
     console.log(`Generate transaksi untuk ${store.name}...`);
 
-    for (let d = 0; d < 30; d++) {
+    for (let d = 0; d < 5; d++) {
       const baseDate = new Date();
       baseDate.setDate(baseDate.getDate() - d);
 

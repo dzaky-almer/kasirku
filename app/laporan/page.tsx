@@ -1,11 +1,22 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useDemoMode } from "@/lib/demo";
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 
 interface TxnItem {
   productId: string;
@@ -55,16 +66,162 @@ function fmtFull(n: number) {
 function toInput(d: Date) {
   return d.toISOString().split("T")[0];
 }
-function addDays(d: Date, n: number) {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
+
+// ── Custom Tooltip untuk AreaChart ─────────────────────────────
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div
+      style={{
+        backgroundColor: "#111827",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: "10px",
+        fontSize: "12px",
+        padding: "10px 14px",
+      }}
+    >
+      <p style={{ color: "#9ca3af", margin: "0 0 4px 0" }}>{label}</p>
+      <p
+        style={{
+          color: "#f59e0b",
+          margin: 0,
+          fontWeight: 600,
+          fontSize: "14px",
+        }}
+      >
+        {fmt(payload[0].value as number)}
+      </p>
+    </div>
+  );
+};
+
+// ── Peak Hour Chart (Recharts) ─────────────────────────────────
+function PeakHourChart({ data }: { data: HourChart[] }) {
+  if (!data.length) return null;
+
+  const peakIdx = data.reduce(
+    (best, h, i) => (h.count > data[best].count ? i : best),
+    0
+  );
+
+  const CustomBar = (props: any) => {
+    const { x, y, width, height, index } = props;
+    if (!width || !height) return null;
+    const isPeak = index === peakIdx;
+    const isEmpty = data[index].count === 0;
+    return (
+      <g>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          rx={4}
+          ry={4}
+          fill={isEmpty ? "transparent" : isPeak ? "#BA7517" : "#FAEEDA"}
+        />
+        {isPeak && !isEmpty && (
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={height}
+            rx={4}
+            ry={4}
+            fill="url(#peakGlow)"
+          />
+        )}
+      </g>
+    );
+  };
+
+  const PeakTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div
+        style={{
+          backgroundColor: "#111827",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "10px",
+          fontSize: "12px",
+          padding: "10px 14px",
+        }}
+      >
+        <p style={{ color: "#9ca3af", margin: "0 0 4px 0" }}>{label}</p>
+        <p
+          style={{
+            color: "#f59e0b",
+            margin: 0,
+            fontWeight: 600,
+            fontSize: "14px",
+          }}
+        >
+          {payload[0].value} transaksi
+        </p>
+      </div>
+    );
+  };
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart
+        data={data.map((h) => ({
+          ...h,
+          label: `${String(h.hour).padStart(2, "0")}:00`,
+        }))}
+        margin={{ top: 8, right: 4, left: 0, bottom: 0 }}
+        barCategoryGap="20%"
+      >
+        <defs>
+          <linearGradient id="peakGlow" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.3} />
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid
+          strokeDasharray="4 4"
+          stroke="rgba(0,0,0,0.05)"
+          vertical={false}
+        />
+        <XAxis
+          dataKey="label"
+          fontSize={10}
+          tick={{ fill: "#9ca3af" }}
+          axisLine={false}
+          tickLine={false}
+          interval={2}
+        />
+        <YAxis
+          fontSize={10}
+          tick={{ fill: "#9ca3af" }}
+          axisLine={false}
+          tickLine={false}
+          allowDecimals={false}
+          width={28}
+        />
+        <Tooltip
+          content={<PeakTooltip />}
+          cursor={{ fill: "rgba(186,117,23,0.06)" }}
+        />
+        <Bar
+          dataKey="count"
+          shape={<CustomBar />}
+          maxBarSize={32}
+          isAnimationActive
+          animationDuration={700}
+          animationEasing="ease-out"
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  );
 }
 
 export default function LaporanPage() {
   const { data: session, status } = useSession();
   const { demoStoreId, isDemoMode } = useDemoMode();
-  const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+  const storeId = isDemoMode
+    ? demoStoreId
+    : (session?.user as any)?.storeId ?? "";
 
   const [mode, setMode] = useState<Mode>("harian");
   const [dateFrom, setDateFrom] = useState(toInput(new Date()));
@@ -78,7 +235,6 @@ export default function LaporanPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Sync date range saat mode berubah
   useEffect(() => {
     const today = new Date();
     if (mode === "harian") {
@@ -94,7 +250,6 @@ export default function LaporanPage() {
       setDateFrom(toInput(first));
       setDateTo(toInput(today));
     }
-    // custom: biarkan user set sendiri
   }, [mode]);
 
   useEffect(() => {
@@ -128,8 +283,14 @@ export default function LaporanPage() {
     return transactions.flatMap((trx) =>
       trx.items.map((item) => ({
         no: no++,
-        waktu: new Date(trx.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
-        tanggal: new Date(trx.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
+        waktu: new Date(trx.createdAt).toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        tanggal: new Date(trx.createdAt).toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "short",
+        }),
         idTrx: trx.id.slice(0, 8),
         namaProduk: item.product?.name ?? "-",
         qty: item.qty,
@@ -142,18 +303,19 @@ export default function LaporanPage() {
   function exportExcel() {
     const rows = buildRows();
     const wb = utils.book_new();
-
-    // Sheet 1: Transaksi
     const ws1 = utils.json_to_sheet(
       rows.map((r) => ({
-        No: r.no, Tanggal: r.tanggal, Waktu: r.waktu,
-        "ID Transaksi": r.idTrx, "Nama Produk": r.namaProduk,
-        Qty: r.qty, "Harga Satuan": r.harga, Subtotal: r.subtotal,
+        No: r.no,
+        Tanggal: r.tanggal,
+        Waktu: r.waktu,
+        "ID Transaksi": r.idTrx,
+        "Nama Produk": r.namaProduk,
+        Qty: r.qty,
+        "Harga Satuan": r.harga,
+        Subtotal: r.subtotal,
       }))
     );
     utils.book_append_sheet(wb, ws1, "Transaksi");
-
-    // Sheet 2: Summary
     const ws2 = utils.json_to_sheet([
       { Metrik: "Total Omzet", Nilai: summary?.totalRevenue ?? 0 },
       { Metrik: "Total Transaksi", Nilai: summary?.totalTransactions ?? 0 },
@@ -161,27 +323,26 @@ export default function LaporanPage() {
       { Metrik: "Rata-rata Transaksi", Nilai: summary?.avgTransaction ?? 0 },
     ]);
     utils.book_append_sheet(wb, ws2, "Summary");
-
-    // Sheet 3: Top Produk
     const ws3 = utils.json_to_sheet(
       topProducts.map((p, i) => ({
-        Rank: i + 1, Produk: p.name, "Qty Terjual": p.qty, Omzet: p.revenue,
+        Rank: i + 1,
+        Produk: p.name,
+        "Qty Terjual": p.qty,
+        Omzet: p.revenue,
       }))
     );
     utils.book_append_sheet(wb, ws3, "Top Produk");
-
     writeFile(wb, `Laporan_${dateFrom}_${dateTo}.xlsx`);
   }
 
   function exportPDF() {
     const doc = new jsPDF();
-    const periode = dateFrom === dateTo ? dateFrom : `${dateFrom} s/d ${dateTo}`;
-
+    const periode =
+      dateFrom === dateTo ? dateFrom : `${dateFrom} s/d ${dateTo}`;
     doc.setFontSize(14);
     doc.text("Laporan Penjualan", 14, 15);
     doc.setFontSize(10);
     doc.text(`Periode: ${periode}`, 14, 22);
-
     if (summary) {
       autoTable(doc, {
         head: [["Metrik", "Nilai"]],
@@ -198,11 +359,15 @@ export default function LaporanPage() {
         tableWidth: 90,
       });
     }
-
     if (topProducts.length > 0) {
       autoTable(doc, {
         head: [["Rank", "Produk", "Qty", "Omzet"]],
-        body: topProducts.map((p, i) => [i + 1, p.name, p.qty, fmtFull(p.revenue)]),
+        body: topProducts.map((p, i) => [
+          i + 1,
+          p.name,
+          p.qty,
+          fmtFull(p.revenue),
+        ]),
         startY: (doc as any).lastAutoTable.finalY + 8,
         theme: "grid",
         headStyles: { fillColor: [146, 64, 14] },
@@ -210,25 +375,72 @@ export default function LaporanPage() {
         tableWidth: 90,
       });
     }
-
     autoTable(doc, {
-      head: [["No", "Tgl", "Waktu", "ID Trx", "Produk", "Qty", "Harga", "Subtotal"]],
+      head: [
+        ["No", "Tgl", "Waktu", "ID Trx", "Produk", "Qty", "Harga", "Subtotal"],
+      ],
       body: buildRows().map((r) => [
-        r.no, r.tanggal, r.waktu, r.idTrx + "...",
-        r.namaProduk, r.qty, fmtFull(r.harga), fmtFull(r.subtotal),
+        r.no,
+        r.tanggal,
+        r.waktu,
+        r.idTrx + "...",
+        r.namaProduk,
+        r.qty,
+        fmtFull(r.harga),
+        fmtFull(r.subtotal),
       ]),
       startY: (doc as any).lastAutoTable.finalY + 8,
       theme: "grid",
       headStyles: { fillColor: [146, 64, 14] },
       styles: { fontSize: 8 },
     });
-
     doc.save(`Laporan_${dateFrom}_${dateTo}.pdf`);
   }
 
   const rows = buildRows();
-  const maxDaily = Math.max(...dailyChart.map((d) => d.revenue), 1);
-  const maxHour = Math.max(...hourChart.map((h) => h.count), 1);
+
+  // ── Chart data untuk Recharts ──────────────────────────────────
+  const chartData = dailyChart.map((d) => ({
+    name: new Date(d.date + "T00:00:00").toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+    }),
+    omzet: d.revenue,
+  }));
+
+  const CustomDot = (props: any) => {
+    const { cx, cy, index } = props;
+    if (cx == null || cy == null) return null;
+    if (index === 0) {
+      return (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={5}
+          fill="#BA7517"
+          stroke="#fff"
+          strokeWidth={2.5}
+        />
+      );
+    }
+    const isUp = chartData[index].omzet >= chartData[index - 1].omzet;
+    return (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={5}
+        fill={isUp ? "#16a34a" : "#dc2626"}
+        stroke="#fff"
+        strokeWidth={2.5}
+      />
+    );
+  };
+
+  // Peak hour info
+  const peakHour =
+    hourChart.length > 0
+      ? hourChart.reduce((best, h) => (h.count > best.count ? h : best))
+      : null;
 
   const MODES: { key: Mode; label: string }[] = [
     { key: "harian", label: "Harian" },
@@ -243,7 +455,9 @@ export default function LaporanPage() {
 
         {/* HEADER */}
         <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">
-          <span className="text-sm font-medium text-gray-900">Laporan Penjualan</span>
+          <span className="text-sm font-medium text-gray-900">
+            Laporan Penjualan
+          </span>
           <div className="flex items-center gap-2">
             <button
               onClick={exportExcel}
@@ -264,7 +478,6 @@ export default function LaporanPage() {
 
         {/* FILTER BAR */}
         <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0 flex-wrap">
-          {/* Mode Toggle */}
           <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
             {MODES.map((m) => (
               <button
@@ -281,7 +494,6 @@ export default function LaporanPage() {
             ))}
           </div>
 
-          {/* Date inputs — custom only */}
           {mode === "custom" ? (
             <div className="flex items-center gap-2">
               <input
@@ -306,17 +518,25 @@ export default function LaporanPage() {
             </span>
           )}
 
-          {/* Inline summary */}
           {summary && (
             <div className="flex items-center gap-4 ml-2">
               <span className="text-xs text-gray-500">
-                Omzet: <span className="font-medium text-gray-800">{fmt(summary.totalRevenue)}</span>
+                Omzet:{" "}
+                <span className="font-medium text-gray-800">
+                  {fmt(summary.totalRevenue)}
+                </span>
               </span>
               <span className="text-xs text-gray-500">
-                Transaksi: <span className="font-medium text-gray-800">{summary.totalTransactions}</span>
+                Transaksi:{" "}
+                <span className="font-medium text-gray-800">
+                  {summary.totalTransactions}
+                </span>
               </span>
               <span className="text-xs text-gray-500">
-                Rata-rata: <span className="font-medium text-gray-800">{fmt(summary.avgTransaction)}</span>
+                Rata-rata:{" "}
+                <span className="font-medium text-gray-800">
+                  {fmt(summary.avgTransaction)}
+                </span>
               </span>
             </div>
           )}
@@ -324,18 +544,39 @@ export default function LaporanPage() {
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {error && (
-            <div className="px-4 py-3 bg-red-50 text-red-600 text-sm rounded-xl">{error}</div>
+            <div className="px-4 py-3 bg-red-50 text-red-600 text-sm rounded-xl">
+              {error}
+            </div>
           )}
 
           {/* METRIC CARDS */}
           <div className="grid grid-cols-4 gap-3">
             {[
-              { label: "Total omzet", value: fmt(summary?.totalRevenue ?? 0), sub: "periode ini" },
-              { label: "Total transaksi", value: summary?.totalTransactions ?? 0, sub: "transaksi" },
-              { label: "Total item terjual", value: summary?.totalItems ?? 0, sub: "item" },
-              { label: "Rata-rata transaksi", value: fmt(summary?.avgTransaction ?? 0), sub: "per transaksi" },
+              {
+                label: "Total omzet",
+                value: fmt(summary?.totalRevenue ?? 0),
+                sub: "periode ini",
+              },
+              {
+                label: "Total transaksi",
+                value: summary?.totalTransactions ?? 0,
+                sub: "transaksi",
+              },
+              {
+                label: "Total item terjual",
+                value: summary?.totalItems ?? 0,
+                sub: "item",
+              },
+              {
+                label: "Rata-rata transaksi",
+                value: fmt(summary?.avgTransaction ?? 0),
+                sub: "per transaksi",
+              },
             ].map((c) => (
-              <div key={c.label} className="bg-white rounded-xl p-4 border border-gray-100">
+              <div
+                key={c.label}
+                className="bg-white rounded-xl p-4 border border-gray-100"
+              >
                 <p className="text-xs text-gray-400 mb-1">{c.label}</p>
                 <p className="text-xl font-medium text-gray-900">{c.value}</p>
                 <p className="text-xs text-gray-400 mt-1">{c.sub}</p>
@@ -343,44 +584,123 @@ export default function LaporanPage() {
             ))}
           </div>
 
-          {/* CHARTS */}
+          {/* CHARTS ROW */}
           <div className="grid grid-cols-3 gap-3">
 
             {/* Grafik harian */}
             <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
-              <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">
-                PENJUALAN PER HARI
-              </p>
+              <div className="flex items-center justify-between mb-5">
+                <p className="text-xs font-medium text-gray-400 tracking-wider">
+                  PENJUALAN PER HARI
+                </p>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                    <span className="w-2 h-2 rounded-full bg-green-600 inline-block" />
+                    Naik
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                    <span className="w-2 h-2 rounded-full bg-red-600 inline-block" />
+                    Turun
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                    <span className="w-2 h-2 rounded-full bg-amber-700 inline-block" />
+                    Awal
+                  </span>
+                </div>
+              </div>
+
               {dailyChart.length === 0 ? (
-                <p className="text-xs text-gray-400 py-8 text-center">Tidak ada data.</p>
+                <p className="text-xs text-gray-400 py-8 text-center">
+                  Tidak ada data.
+                </p>
               ) : (
-                <div className="flex items-end gap-1.5 h-36">
-                  {dailyChart.map((d) => {
-                    const pct = Math.max(Math.round((d.revenue / maxDaily) * 100), d.revenue > 0 ? 4 : 0);
-                    const label = new Date(d.date).toLocaleDateString("id-ID", { day: "numeric", month: "short" });
-                    return (
-                      <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group relative">
-                        <div className="w-full flex items-end justify-center" style={{ height: 112 }}>
-                          <div
-                            className="w-full rounded-t-md bg-amber-200 group-hover:bg-amber-500 transition-colors"
-                            style={{ height: `${pct}%` }}
+                <div className="w-full h-44">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={chartData}
+                      margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient
+                          id="omzetFillLaporan"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="0%"
+                            stopColor="#f59e0b"
+                            stopOpacity={0.5}
                           />
-                        </div>
-                        <span className="text-[9px] text-gray-400 whitespace-nowrap">{label.split(" ")[0]}</span>
-                        {/* Tooltip */}
-                        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                          {label}: {fmt(d.revenue)}
-                        </div>
-                      </div>
-                    );
-                  })}
+                          <stop
+                            offset="60%"
+                            stopColor="#BA7517"
+                            stopOpacity={0.15}
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor="#BA7517"
+                            stopOpacity={0}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="4 4"
+                        stroke="rgba(0,0,0,0.05)"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        fontSize={10}
+                        tick={{ fill: "#9ca3af" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        fontSize={10}
+                        tick={{ fill: "#9ca3af" }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v) => fmt(v)}
+                        width={64}
+                      />
+                      <Tooltip
+                        content={<CustomTooltip />}
+                        cursor={{
+                          stroke: "rgba(186,117,23,0.25)",
+                          strokeWidth: 1,
+                          strokeDasharray: "4 4",
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="omzet"
+                        stroke="#BA7517"
+                        strokeWidth={2.5}
+                        fill="url(#omzetFillLaporan)"
+                        dot={<CustomDot />}
+                        activeDot={{
+                          r: 7,
+                          fill: "#f59e0b",
+                          stroke: "#fff",
+                          strokeWidth: 2.5,
+                        }}
+                        isAnimationActive={true}
+                        animationDuration={900}
+                        animationEasing="ease-out"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
               )}
             </div>
 
             {/* Top produk */}
             <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">TOP PRODUK</p>
+              <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">
+                TOP PRODUK
+              </p>
               {topProducts.length === 0 ? (
                 <p className="text-xs text-gray-400">Belum ada data.</p>
               ) : (
@@ -392,12 +712,18 @@ export default function LaporanPage() {
                       <div key={p.productId}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs text-gray-700 truncate max-w-[120px]">
-                            <span className="text-gray-400 mr-1">{i + 1}.</span>{p.name}
+                            <span className="text-gray-400 mr-1">{i + 1}.</span>
+                            {p.name}
                           </span>
-                          <span className="text-xs font-medium text-amber-700">{p.qty} pcs</span>
+                          <span className="text-xs font-medium text-amber-700">
+                            {p.qty} pcs
+                          </span>
                         </div>
                         <div className="w-full bg-gray-100 rounded-full h-1.5">
-                          <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                          <div
+                            className="bg-amber-500 h-1.5 rounded-full"
+                            style={{ width: `${pct}%` }}
+                          />
                         </div>
                       </div>
                     );
@@ -407,35 +733,82 @@ export default function LaporanPage() {
             </div>
           </div>
 
-          {/* JAM RAMAI */}
+          {/* JAM RAMAI — Recharts BarChart */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">JAM RAMAI (PEAK HOUR)</p>
-            <div className="flex items-end gap-1 h-20">
-              {hourChart.map((h) => {
-                const pct = Math.max(Math.round((h.count / maxHour) * 100), h.count > 0 ? 6 : 0);
-                const isActive = h.count === Math.max(...hourChart.map((x) => x.count)) && h.count > 0;
-                return (
-                  <div key={h.hour} className="flex-1 flex flex-col items-center gap-1 group relative">
-                    <div className="w-full flex items-end justify-center" style={{ height: 64 }}>
-                      <div
-                        className={`w-full rounded-t transition-colors ${
-                          isActive ? "bg-amber-600" : "bg-amber-100 group-hover:bg-amber-300"
-                        }`}
-                        style={{ height: `${pct}%` }}
-                      />
-                    </div>
-                    {h.hour % 3 === 0 && (
-                      <span className="text-[8px] text-gray-400">{String(h.hour).padStart(2, "0")}</span>
-                    )}
-                    {h.count > 0 && (
-                      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                        {h.label}: {h.count} trx
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-xs font-medium text-gray-400 tracking-wider">
+                  JAM RAMAI (PEAK HOUR)
+                </p>
+                <p className="text-[10px] text-gray-400 mt-0.5">
+                  Distribusi transaksi per jam
+                </p>
+              </div>
+              {peakHour && peakHour.count > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-400">Jam puncak</span>
+                  <span className="text-xs px-3 py-1 rounded-full bg-amber-50 text-amber-700 font-medium border border-amber-100">
+                    {peakHour.label} · {peakHour.count} trx
+                  </span>
+                </div>
+              )}
             </div>
+
+            {hourChart.length === 0 ? (
+              <p className="text-xs text-gray-400 py-8 text-center">
+                Tidak ada data.
+              </p>
+            ) : (
+              <>
+                <div style={{ width: "100%", height: 160 }}>
+                  <PeakHourChart data={hourChart} />
+                </div>
+
+                {/* Mini summary strip */}
+                <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-50">
+                  {(() => {
+                    const sorted = [...hourChart].sort(
+                      (a, b) => b.count - a.count
+                    );
+                    const activeHours = hourChart.filter((h) => h.count > 0);
+                    const total = hourChart.reduce(
+                      (s, h) => s + h.count,
+                      0
+                    );
+                    return [
+                      {
+                        label: "Jam tersibuk",
+                        value: sorted[0]?.label ?? "-",
+                        sub: `${sorted[0]?.count ?? 0} transaksi`,
+                      },
+                      {
+                        label: "Jam tersunyi",
+                        value: activeHours.at(-1)?.label ?? "-",
+                        sub: `${activeHours.at(-1)?.count ?? 0} transaksi`,
+                      },
+                      {
+                        label: "Total jam aktif",
+                        value: `${activeHours.length} jam`,
+                        sub: `dari ${total} transaksi`,
+                      },
+                    ].map((s) => (
+                      <div
+                        key={s.label}
+                        className="bg-gray-50 rounded-lg px-3 py-2.5"
+                      >
+                        <p className="text-[10px] text-gray-400 mb-0.5">
+                          {s.label}
+                        </p>
+                        <p className="text-sm font-medium text-gray-800">
+                          {s.value}
+                        </p>
+                        <p className="text-[10px] text-gray-400">{s.sub}</p>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </>
+            )}
           </div>
 
           {/* TABEL TRANSAKSI */}
@@ -443,8 +816,20 @@ export default function LaporanPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {["NO", "TGL", "WAKTU", "ID TRANSAKSI", "NAMA PRODUK", "QTY", "HARGA", "SUBTOTAL"].map((h) => (
-                    <th key={h} className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-4 py-3">
+                  {[
+                    "NO",
+                    "TGL",
+                    "WAKTU",
+                    "ID TRANSAKSI",
+                    "NAMA PRODUK",
+                    "QTY",
+                    "HARGA",
+                    "SUBTOTAL",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-4 py-3"
+                    >
                       {h}
                     </th>
                   ))}
@@ -452,20 +837,53 @@ export default function LaporanPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {loading ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-sm text-gray-400">Memuat laporan...</td></tr>
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="text-center py-12 text-sm text-gray-400"
+                    >
+                      Memuat laporan...
+                    </td>
+                  </tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-sm text-gray-400">Tidak ada transaksi pada periode ini.</td></tr>
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="text-center py-12 text-sm text-gray-400"
+                    >
+                      Tidak ada transaksi pada periode ini.
+                    </td>
+                  </tr>
                 ) : (
                   rows.map((r) => (
-                    <tr key={`${r.idTrx}-${r.no}`} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-sm text-gray-500">{r.no}</td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{r.tanggal}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{r.waktu}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-gray-500">{r.idTrx}...</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{r.namaProduk}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{r.qty}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{fmtFull(r.harga)}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-amber-700">{fmtFull(r.subtotal)}</td>
+                    <tr
+                      key={`${r.idTrx}-${r.no}`}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {r.no}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {r.tanggal}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {r.waktu}
+                      </td>
+                      <td className="px-4 py-3 text-xs font-mono text-gray-500">
+                        {r.idTrx}...
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {r.namaProduk}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {r.qty}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {fmtFull(r.harga)}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-medium text-amber-700">
+                        {fmtFull(r.subtotal)}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -473,7 +891,10 @@ export default function LaporanPage() {
               {rows.length > 0 && summary && (
                 <tfoot>
                   <tr className="border-t border-gray-200 bg-gray-50">
-                    <td colSpan={7} className="px-4 py-3 text-xs font-medium text-gray-500 text-right">
+                    <td
+                      colSpan={7}
+                      className="px-4 py-3 text-xs font-medium text-gray-500 text-right"
+                    >
                       Total Omzet
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-amber-700">

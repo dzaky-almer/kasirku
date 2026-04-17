@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { validateRegistrationEmail, validateWhatsappNumber } from "@/lib/register-validation";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -44,19 +45,34 @@ export async function POST(req: Request) {
     );
   }
 
+  const emailValidation = validateRegistrationEmail(email);
+  if (!emailValidation.valid || !emailValidation.normalized) {
+    return NextResponse.json({ error: emailValidation.error ?? "Email tidak valid" }, { status: 400 });
+  }
+
   if (password.length < 8) {
     return NextResponse.json({ error: "Password minimal 8 karakter" }, { status: 400 });
   }
 
-  const cleanPhone = phone.replace(/\D/g, "");
-  if (!cleanPhone.startsWith("62") || cleanPhone.length < 10) {
+  const phoneValidation = validateWhatsappNumber(phone, "No. WhatsApp");
+  if (!phoneValidation.valid || !phoneValidation.normalized) {
     return NextResponse.json(
-      { error: "No. WhatsApp harus berformat 628xxxxxxxxx" },
+      { error: phoneValidation.error ?? "No. WhatsApp tidak valid" },
       { status: 400 }
     );
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const cleanWaNumber = waNumber?.trim()
+    ? validateWhatsappNumber(waNumber, "No. WA toko")
+    : { valid: true, normalized: phoneValidation.normalized };
+  if (!cleanWaNumber.valid || !cleanWaNumber.normalized) {
+    return NextResponse.json(
+      { error: cleanWaNumber.error ?? "No. WA toko tidak valid" },
+      { status: 400 }
+    );
+  }
+
+  const normalizedEmail = emailValidation.normalized;
   const normalizedCode = referralCode.trim().toUpperCase();
 
   const [existingUser, codeRecord] = await Promise.all([
@@ -81,7 +97,6 @@ export async function POST(req: Request) {
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
-  const cleanWaNumber = waNumber?.replace(/\D/g, "") || cleanPhone;
   const expiredAt = new Date();
   expiredAt.setDate(expiredAt.getDate() + codeRecord.durationDays);
 
@@ -92,13 +107,13 @@ export async function POST(req: Request) {
           email: normalizedEmail,
           password: hashedPassword,
           name: ownerName.trim(),
-          phone: cleanPhone,
+          phone: phoneValidation.normalized,
           stores: {
             create: {
               name: storeName.trim(),
               type: storeType?.trim() || "cafe",
               address: storeAddress?.trim() || null,
-              waNumber: cleanWaNumber || null,
+              waNumber: cleanWaNumber.normalized || null,
               midtransServerKey: midtransServerKey?.trim() || null,
               midtransClientKey: midtransClientKey?.trim() || null,
             },

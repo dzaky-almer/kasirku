@@ -10,6 +10,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { clearDemoMeta } from "@/lib/demo";
+import {
+  normalizePhoneInput,
+  validateRegistrationEmail,
+  validateWhatsappNumber,
+} from "@/lib/register-validation";
 
 type Step = 1 | 2 | 3;
 
@@ -46,12 +51,15 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [phone, setPhone] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
 
   // ── Step 3: Data Toko + Midtrans ───────────────────────────
   const [storeName, setStoreName] = useState("");
   const [storeType, setStoreType] = useState("cafe");
   const [storeAddress, setStoreAddress] = useState("");
   const [waNumber, setWaNumber] = useState("");
+  const [waNumberError, setWaNumberError] = useState("");
   const [midtransServerKey, setMidtransServerKey] = useState("");
   const [midtransClientKey, setMidtransClientKey] = useState("");
   const [showMidtrans, setShowMidtrans] = useState(false);
@@ -102,6 +110,16 @@ export default function RegisterPage() {
       setError("Semua field wajib diisi.");
       return;
     }
+
+    const emailValidation = validateRegistrationEmail(email);
+    if (!emailValidation.valid || !emailValidation.normalized) {
+      setEmailError(emailValidation.error ?? "Email tidak valid.");
+      setError(emailValidation.error ?? "Email tidak valid.");
+      return;
+    }
+
+    const normalizedEmail = emailValidation.normalized;
+
     if (password !== confirmPassword) {
       setError("Password tidak cocok.");
       return;
@@ -110,14 +128,23 @@ export default function RegisterPage() {
       setError("Password minimal 8 karakter.");
       return;
     }
-    const phoneClean = phone.replace(/\D/g, "");
-    if (!phoneClean.startsWith("62")) {
-      setError("Nomor WA harus diawali 62 (contoh: 628123456789).");
+
+    const phoneValidation = validateWhatsappNumber(phone, "Nomor WhatsApp");
+    if (!phoneValidation.valid || !phoneValidation.normalized) {
+      setPhoneError(phoneValidation.error ?? "Nomor WhatsApp tidak valid.");
+      setError(phoneValidation.error ?? "Nomor WhatsApp tidak valid.");
       return;
     }
+
+    setEmail(normalizedEmail);
+    setPhone(phoneValidation.normalized);
+    setEmailError("");
+    setPhoneError("");
     setError("");
-    // Auto-isi waNumber sama dengan phone kalau belum diisi
-    if (!waNumber) setWaNumber(phone);
+
+    if (!waNumber) {
+      setWaNumber(phoneValidation.normalized);
+    }
     setStep(3);
   }
 
@@ -126,7 +153,37 @@ export default function RegisterPage() {
       setError("Nama toko wajib diisi.");
       return;
     }
+
+    const emailValidation = validateRegistrationEmail(email);
+    if (!emailValidation.valid || !emailValidation.normalized) {
+      setEmailError(emailValidation.error ?? "Email tidak valid.");
+      setError(emailValidation.error ?? "Email tidak valid.");
+      return;
+    }
+    const normalizedEmail = emailValidation.normalized;
+
+    const phoneValidation = validateWhatsappNumber(phone, "Nomor WhatsApp");
+    if (!phoneValidation.valid || !phoneValidation.normalized) {
+      setPhoneError(phoneValidation.error ?? "Nomor WhatsApp tidak valid.");
+      setError(phoneValidation.error ?? "Nomor WhatsApp tidak valid.");
+      return;
+    }
+    const normalizedPhone = phoneValidation.normalized;
+
+    const waValidation = waNumber.trim()
+      ? validateWhatsappNumber(waNumber, "No. WA toko")
+      : { valid: true as const, normalized: normalizedPhone };
+    if (!waValidation.valid || !waValidation.normalized) {
+      setWaNumberError(waValidation.error ?? "No. WA toko tidak valid.");
+      setError(waValidation.error ?? "No. WA toko tidak valid.");
+      return;
+    }
+    const normalizedWaNumber = waValidation.normalized;
+
     setError("");
+    setEmailError("");
+    setPhoneError("");
+    setWaNumberError("");
     setLoading(true);
 
     try {
@@ -134,15 +191,15 @@ export default function RegisterPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email,
+          email: normalizedEmail,
           password,
           ownerName,
-          phone: phone.replace(/\D/g, ""),
+          phone: normalizedPhone,
           referralCode: referralCode.trim().toUpperCase(),
           storeName,
           storeType,
           storeAddress: storeAddress || null,
-          waNumber: waNumber ? waNumber.replace(/\D/g, "") : phone.replace(/\D/g, ""),
+          waNumber: normalizedWaNumber,
           midtransServerKey: midtransServerKey || null,
           midtransClientKey: midtransClientKey || null,
         }),
@@ -160,7 +217,7 @@ export default function RegisterPage() {
 
       // Auto login setelah register berhasil
       const login = await signIn("credentials", {
-        email,
+        email: normalizedEmail,
         password,
         redirect: false,
       });
@@ -330,17 +387,63 @@ export default function RegisterPage() {
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-600 mb-1.5 block">Email *</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (emailError) {
+                        setEmailError("");
+                      }
+                    }}
+                    onBlur={() => {
+                      const emailValidation = validateRegistrationEmail(email);
+                      setEmailError(emailValidation.valid ? "" : emailValidation.error ?? "");
+                      if (emailValidation.valid && emailValidation.normalized) {
+                        setEmail(emailValidation.normalized);
+                      }
+                    }}
                     placeholder="kamu@gmail.com"
-                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
+                    autoComplete="email"
+                    inputMode="email"
+                    maxLength={254}
+                    className={`w-full px-4 py-3 text-sm text-slate-900 border rounded-2xl outline-none transition ${
+                      emailError
+                        ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                        : "border-slate-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                    }`}
                   />
+                  {emailError && <p className="text-[10px] text-red-500 mt-1">{emailError}</p>}
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-600 mb-1.5 block">No. WhatsApp *</label>
-                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => {
+                      setPhone(normalizePhoneInput(e.target.value));
+                      if (phoneError) {
+                        setPhoneError("");
+                      }
+                    }}
+                    onBlur={() => {
+                      const phoneValidation = validateWhatsappNumber(phone, "Nomor WhatsApp");
+                      setPhoneError(phoneValidation.valid ? "" : phoneValidation.error ?? "");
+                      if (phoneValidation.valid && phoneValidation.normalized) {
+                        setPhone(phoneValidation.normalized);
+                      }
+                    }}
                     placeholder="628123456789"
-                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition font-mono"
+                    autoComplete="tel"
+                    inputMode="numeric"
+                    maxLength={15}
+                    className={`w-full px-4 py-3 text-sm text-slate-900 border rounded-2xl outline-none transition font-mono ${
+                      phoneError
+                        ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                        : "border-slate-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                    }`}
                   />
+                  {phoneError && <p className="text-[10px] text-red-500 mt-1">{phoneError}</p>}
                   <p className="text-[10px] text-slate-400 mt-1">Format: 628xxxxxxxxx (tanpa tanda +)</p>
                 </div>
                 <div>
@@ -416,10 +519,37 @@ export default function RegisterPage() {
                   </div>
                   <div>
                     <label className="text-xs font-bold text-slate-600 mb-1.5 block">No. WA Toko</label>
-                    <input type="tel" value={waNumber} onChange={(e) => setWaNumber(e.target.value)}
+                    <input
+                      type="tel"
+                      value={waNumber}
+                      onChange={(e) => {
+                        setWaNumber(normalizePhoneInput(e.target.value));
+                        if (waNumberError) {
+                          setWaNumberError("");
+                        }
+                      }}
+                      onBlur={() => {
+                        if (!waNumber.trim()) {
+                          setWaNumberError("");
+                          return;
+                        }
+
+                        const waValidation = validateWhatsappNumber(waNumber, "No. WA toko");
+                        setWaNumberError(waValidation.valid ? "" : waValidation.error ?? "");
+                        if (waValidation.valid && waValidation.normalized) {
+                          setWaNumber(waValidation.normalized);
+                        }
+                      }}
                       placeholder="628xxx"
-                      className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 transition font-mono"
+                      inputMode="numeric"
+                      maxLength={15}
+                      className={`w-full px-4 py-3 text-sm text-slate-900 border rounded-2xl outline-none transition font-mono ${
+                        waNumberError
+                          ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                          : "border-slate-200 focus:border-amber-400"
+                      }`}
                     />
+                    {waNumberError && <p className="text-[10px] text-red-500 mt-1">{waNumberError}</p>}
                   </div>
                 </div>
 

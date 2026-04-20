@@ -167,6 +167,7 @@ export default function KasirPage() {
   const [showStruk, setShowStruk] = useState(false);
   const [lastTransaction, setLastTransaction] = useState<any>(null);
   const [shift, setShift] = useState<any>(null);
+  const [snapReady, setSnapReady] = useState(false);
 
   // ── STATE PROMO ──────────────────────────────────────────
   const [promos, setPromos] = useState<Promo[]>([]);
@@ -217,7 +218,7 @@ export default function KasirPage() {
       .then((data) => {
         if (Array.isArray(data)) setPromos(data);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [storeId]);
 
   useEffect(() => {
@@ -474,6 +475,12 @@ export default function KasirPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Gagal generate QRIS");
 
+      if (!window.snap) {
+        alert("Midtrans belum siap");
+        setQrisLoading(false);
+        return;
+      }
+
       window.snap.pay(data.token, {
         onSuccess: async () => {
           const ok = await saveTransaction("qris");
@@ -503,11 +510,15 @@ export default function KasirPage() {
 
   return (
     <>
-      <Script
-        src="https://app.sandbox.midtrans.com/snap/snap.js"
-        data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
-        strategy="lazyOnload"
-      />
+<Script
+  src="https://app.sandbox.midtrans.com/snap/snap.js"
+  data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
+  strategy="afterInteractive"
+  onLoad={() => {
+    console.log("Midtrans SNAP READY");
+    setSnapReady(true);
+  }}
+/>
 
       <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
         {/* ── PRODUCT AREA ──────────────────────────────────── */}
@@ -550,11 +561,10 @@ export default function KasirPage() {
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    activeCategory === cat
-                      ? "bg-amber-700 text-white"
-                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeCategory === cat
+                    ? "bg-amber-700 text-white"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    }`}
                 >
                   {cat}
                 </button>
@@ -579,9 +589,8 @@ export default function KasirPage() {
                       key={product.id}
                       onClick={() => addToCart(product)}
                       disabled={product.stock === 0}
-                      className={`bg-white border rounded-xl overflow-hidden text-left hover:border-amber-300 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
-                        inCart ? "border-amber-400" : "border-gray-100"
-                      }`}
+                      className={`bg-white border rounded-xl overflow-hidden text-left hover:border-amber-300 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${inCart ? "border-amber-400" : "border-gray-100"
+                        }`}
                     >
                       <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
                         {product.imageUrl ? (
@@ -730,11 +739,10 @@ export default function KasirPage() {
                         <>
                           <button
                             onClick={() => { setSelectedPromo(null); setShowPromoPanel(false); }}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
-                              !selectedPromo
-                                ? "bg-amber-50 text-amber-700 font-medium"
-                                : "text-gray-500 hover:bg-white"
-                            }`}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${!selectedPromo
+                              ? "bg-amber-50 text-amber-700 font-medium"
+                              : "text-gray-500 hover:bg-white"
+                              }`}
                           >
                             Tanpa promo
                           </button>
@@ -748,11 +756,10 @@ export default function KasirPage() {
                               <button
                                 key={promo.id}
                                 onClick={() => { setSelectedPromo(promo); setShowPromoPanel(false); }}
-                                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors ${
-                                  isSelected
-                                    ? "bg-amber-50 border border-amber-200"
-                                    : "hover:bg-white border border-transparent"
-                                }`}
+                                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors ${isSelected
+                                  ? "bg-amber-50 border border-amber-200"
+                                  : "hover:bg-white border border-transparent"
+                                  }`}
                               >
                                 <div className="flex justify-between items-start">
                                   <div>
@@ -762,9 +769,8 @@ export default function KasirPage() {
                                     <p className="text-[10px] text-gray-400 mt-0.5">{promoTypeLabel(promo)}</p>
                                   </div>
                                   <span
-                                    className={`font-medium ml-2 flex-shrink-0 ${
-                                      preview.valid ? "text-green-600" : "text-gray-400 line-through"
-                                    }`}
+                                    className={`font-medium ml-2 flex-shrink-0 ${preview.valid ? "text-green-600" : "text-gray-400 line-through"
+                                      }`}
                                   >
                                     -{discLabel}
                                   </span>
@@ -798,21 +804,19 @@ export default function KasirPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setPaymentMethod("cash")}
-                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${
-                      paymentMethod === "cash"
-                        ? "bg-amber-700 text-white border-amber-700"
-                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
-                    }`}
+                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${paymentMethod === "cash"
+                      ? "bg-amber-700 text-white border-amber-700"
+                      : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                      }`}
                   >
                     💵 Cash
                   </button>
                   <button
                     onClick={() => setPaymentMethod("qris")}
-                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${
-                      paymentMethod === "qris"
-                        ? "bg-amber-700 text-white border-amber-700"
-                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
-                    }`}
+                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${paymentMethod === "qris"
+                      ? "bg-amber-700 text-white border-amber-700"
+                      : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                      }`}
                   >
                     📱 QRIS
                   </button>
@@ -854,8 +858,8 @@ export default function KasirPage() {
                 {loading || qrisLoading
                   ? "Memproses..."
                   : paymentMethod === "qris"
-                  ? "Bayar via QRIS"
-                  : "Bayar Cash"}
+                    ? "Bayar via QRIS"
+                    : "Bayar Cash"}
               </button>
             </div>
           )}

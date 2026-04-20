@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Script from "next/script";
 import { useDemoMode } from "@/lib/demo";
+import { formatRupiah } from "@/lib/currency";
+import type { Promo } from "@/lib/promo-utils";
 
 interface Product {
   id: string;
@@ -20,30 +22,6 @@ interface CartItem extends Product {
 }
 
 // ── TIPE PROMO (updated: multi-rule) ────────────────────────
-interface PromoRule {
-  id: string;
-  type: "PRODUCT" | "HAPPY_HOUR" | "MIN_TRANSACTION";
-  discountType: "PERCENT" | "NOMINAL";
-  discountValue: number;
-  productId?: string | null;
-  startTime?: string | null;
-  endTime?: string | null;
-  minTransaction?: number | null;
-}
-
-interface Promo {
-  id: string;
-  name: string;
-  tag?: string | null;
-  isActive: boolean;
-  rules: PromoRule[];
-}
-
-function formatRupiah(amount: number): string {
-  if (amount == null || isNaN(amount)) return "Rp 0";
-  return "Rp " + amount.toLocaleString("id-ID");
-}
-
 declare global {
   interface Window { snap: any; }
 }
@@ -167,7 +145,6 @@ export default function KasirPage() {
   const [showStruk, setShowStruk] = useState(false);
   const [lastTransaction, setLastTransaction] = useState<any>(null);
   const [shift, setShift] = useState<any>(null);
-  const [snapReady, setSnapReady] = useState(false);
 
   // ── STATE PROMO ──────────────────────────────────────────
   const [promos, setPromos] = useState<Promo[]>([]);

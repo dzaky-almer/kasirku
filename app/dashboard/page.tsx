@@ -4,6 +4,7 @@
   import { useRouter } from "next/navigation";
   import { useSession } from "next-auth/react";
   import { useDemoMode } from "@/lib/demo";
+  import { formatRupiahShort } from "@/lib/currency";
   import {
     AreaChart,
     Area,
@@ -31,12 +32,6 @@
     });
   }
 
-  function formatRupiah(amount: number): string {
-    if (amount >= 1000000) return `Rp ${(amount / 1000000).toFixed(1)}jt`;
-    if (amount >= 1000) return `Rp ${(amount / 1000).toFixed(0)}rb`;
-    return `Rp ${amount.toLocaleString("id-ID")}`;
-  }
-
   function getToday(): string {
     return new Date().toLocaleDateString("id-ID", {
       weekday: "long", day: "numeric", month: "short", year: "numeric",
@@ -55,7 +50,7 @@
       }}>
         <p style={{ color: "#9ca3af", margin: "0 0 4px 0" }}>Tanggal: {label}</p>
         <p style={{ color: "#f59e0b", margin: 0, fontWeight: 600, fontSize: "14px" }}>
-          {formatRupiah(payload[0].value as number)}
+          {formatRupiahShort(payload[0].value as number)}
         </p>
       </div>
     );
@@ -204,7 +199,7 @@
             <div className="grid grid-cols-4 gap-3 mb-5">
               <div className="bg-white rounded-xl p-4 border border-gray-100">
                 <p className="text-xs text-gray-400 mb-1">Omzet hari ini</p>
-                <p className="text-xl font-medium text-gray-900">{formatRupiah(totalOmzet)}</p>
+                <p className="text-xl font-medium text-gray-900">{formatRupiahShort(totalOmzet)}</p>
                 <p className="text-xs text-gray-400 mt-1">dari transaksi hari ini</p>
               </div>
               <div className="bg-white rounded-xl p-4 border border-gray-100">
@@ -281,7 +276,7 @@
                         tick={{ fill: "#9ca3af" }}
                         axisLine={false}
                         tickLine={false}
-                        tickFormatter={(v) => formatRupiah(v)}
+                        tickFormatter={(v) => formatRupiahShort(v)}
                         width={64}
                       />
 
@@ -326,7 +321,7 @@
                           </div>
                         </div>
                         <span className="text-xs font-medium text-amber-700 ml-2 flex-shrink-0">
-                          +{formatRupiah(txn.amount)}
+                          +{formatRupiahShort(txn.amount)}
                         </span>
                       </div>
                     ))}
@@ -376,7 +371,7 @@
                           <p className="text-[10px] text-gray-400">{p.sold} terjual</p>
                         </div>
                         <span className="text-xs font-medium text-amber-700">
-                          {formatRupiah(p.revenue)}
+                          {formatRupiahShort(p.revenue)}
                         </span>
                       </div>
                     ))}

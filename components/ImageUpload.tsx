@@ -2,14 +2,21 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { uploadProductImage } from "@/lib/product-image";
 
 interface Props {
   value?: string;
   onChange: (url: string) => void;
+  onError?: (message: string) => void;
+  onUploadingChange?: (uploading: boolean) => void;
 }
 
-export default function ImageUpload({ value, onChange }: Props) {
+export default function ImageUpload({
+  value,
+  onChange,
+  onError,
+  onUploadingChange,
+}: Props) {
   const [uploading, setUploading] = useState(false);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -17,26 +24,16 @@ export default function ImageUpload({ value, onChange }: Props) {
     if (!file) return;
 
     setUploading(true);
+    onUploadingChange?.(true);
     try {
-      const ext = file.name.split(".").pop();
-      const fileName = `${Date.now()}.${ext}`;
-
-      const { error } = await supabase.storage
-        .from("products")
-        .upload(fileName, file, { upsert: true });
-
-      if (error) throw error;
-
-      const { data } = supabase.storage
-        .from("products")
-        .getPublicUrl(fileName);
-
-      onChange(data.publicUrl);
+      const url = await uploadProductImage(file);
+      onChange(url);
     } catch (err) {
       console.error("Upload gagal:", err);
-      alert("Upload gambar gagal. Coba lagi.");
+      onError?.(err instanceof Error ? err.message : "Upload gambar gagal. Coba lagi.");
     } finally {
       setUploading(false);
+      onUploadingChange?.(false);
     }
   }
 

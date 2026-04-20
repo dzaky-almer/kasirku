@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useDemoMode } from "@/lib/demo";
+import { formatRupiahShort } from "@/lib/currency";
 
 interface Shift {
   id: string;
@@ -129,12 +130,6 @@ export default function ShiftsPage() {
     setNotes("");
   };
 
-  function formatRupiah(amount: number) {
-    if (amount >= 1000000) return `Rp ${(amount / 1000000).toFixed(1)}jt`;
-    if (amount >= 1000) return `Rp ${Math.round(amount / 1000)}rb`;
-    return `Rp ${amount.toLocaleString("id-ID")}`;
-  }
-
   function getOpenTime() {
     if (!openShift?.opened_at) return "—";
     return new Date(openShift.opened_at).toLocaleTimeString("id-ID", {
@@ -184,9 +179,9 @@ export default function ShiftsPage() {
 
           {/* METRIC */}
           <div className="grid grid-cols-3 gap-3 mb-5">
-            <Card label="Uang awal" value={openShift ? formatRupiah(openShift.opening_cash) : "—"} />
-            <Card label="Total penjualan" value={openShift ? formatRupiah(openShift.total_sales) : "—"} highlight />
-            <Card label="Expected cash" value={openShift ? formatRupiah(expected) : "—"} />
+            <Card label="Uang awal" value={openShift ? formatRupiahShort(openShift.opening_cash) : "—"} />
+            <Card label="Total penjualan" value={openShift ? formatRupiahShort(openShift.total_sales) : "—"} highlight />
+            <Card label="Expected cash" value={openShift ? formatRupiahShort(expected) : "—"} />
           </div>
 
           {/* OPEN SHIFT */}
@@ -232,7 +227,7 @@ export default function ShiftsPage() {
                 <InfoRow label="Kasir" value={openShift.cashierName || "—"} />
                 <InfoRow label="Dibuka" value={getOpenTime()} />
                 <InfoRow label="Transaksi" value={`${openShift.total_transactions ?? 0}`} />
-                <InfoRow label="Expected" value={formatRupiah(expected)} />
+                <InfoRow label="Expected" value={formatRupiahShort(expected)} />
               </div>
 
               {/* CLOSE */}
@@ -265,7 +260,7 @@ export default function ShiftsPage() {
                         : "text-emerald-600"
                     }
                   >
-                    {diff === null ? "-" : formatRupiah(diff)}
+                    {diff === null ? "-" : formatRupiahShort(diff)}
                   </span>
                 </div>
 

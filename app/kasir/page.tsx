@@ -510,15 +510,15 @@ export default function KasirPage() {
 
   return (
     <>
-<Script
-  src="https://app.sandbox.midtrans.com/snap/snap.js"
-  data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
-  strategy="afterInteractive"
-  onLoad={() => {
-    console.log("Midtrans SNAP READY");
-    setSnapReady(true);
-  }}
-/>
+      <Script
+        src="https://app.sandbox.midtrans.com/snap/snap.js"
+        data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
+        strategy="afterInteractive"
+        onLoad={() => {
+          console.log("Midtrans SNAP READY");
+          setSnapReady(true);
+        }}
+      />
 
       <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
         {/* ── PRODUCT AREA ──────────────────────────────────── */}

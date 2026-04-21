@@ -470,7 +470,7 @@ export default function ProdukPage() {
                 onClick={() => setShowDeadstockPanel(v => !v)}
                 className={`text-[10px] px-2 py-0.5 rounded-full transition-colors ${showDeadstockPanel ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
               >
-                🧊 {deadCount} nganggur
+                {deadCount} tidak laku
               </button>
             )}
           </div>
@@ -505,7 +505,7 @@ export default function ProdukPage() {
       {showDeadstockPanel && (
         <div className="bg-gray-50 border-b border-gray-200 px-5 py-3 flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-gray-700">🧊 Barang Nganggur — tidak terjual 7 hari terakhir</p>
+            <p className="text-xs font-medium text-gray-700">Barang tidak laku; — tidak terjual 7 hari terakhir</p>
             <button onClick={() => setShowDeadstockPanel(false)} className="text-gray-400 hover:text-gray-600 text-xs">Tutup</button>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -576,7 +576,7 @@ export default function ProdukPage() {
         {/* Stock filter — termasuk deadstock */}
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
           {([
-            ["all", "Semua"], ["ok", "Aman"], ["low", "Menipis"], ["empty", "Habis"], ["deadstock", "🧊 Nganggur"],
+            ["all", "Semua"], ["ok", "Aman"], ["low", "Menipis"], ["empty", "Habis"], ["deadstock", "tidak laku"],
           ] as [StockFilter, string][]).map(([key, label]) => (
             <button
               key={key} onClick={() => setStockFilter(key)}
@@ -676,7 +676,7 @@ export default function ProdukPage() {
                               <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${labelStyle[p.label] ?? "bg-gray-100 text-gray-600"}`}>{p.label}</span>
                             )}
                             {isDead && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">🧊 Nganggur</span>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">tidak laku</span>
                             )}
                           </div>
                           {p.category && <p className="text-[10px] text-gray-400">{p.category} · {p.unit}</p>}

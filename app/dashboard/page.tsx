@@ -97,7 +97,7 @@ function StockWarningBar({ fastStock, slowStock, deadStock }: {
         )}
         {deadStock.length > 0 && (
           <span className="text-[10px] bg-red-100 text-red-600 font-semibold px-2 py-0.5 rounded-full">
-            {deadStock.length} nganggur
+            {deadStock.length} tidak laku
           </span>
         )}
         {slowStock.length > 0 && (
@@ -525,7 +525,7 @@ export default function DashboardPage() {
                       <span className={`text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ${
                         p.status === "dead" ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"
                       }`}>
-                        {p.status === "dead" ? "Nganggur" : "Lambat"}
+                        {p.status === "dead" ? "tidak laku" : "Lambat"}
                       </span>
                     </div>
                   ))}

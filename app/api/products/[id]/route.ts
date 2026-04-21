@@ -22,7 +22,20 @@ export async function PUT(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { name, price, stock, barcode, sku, costPrice, minStock, unit, category, imageUrl } = body;
+  const {
+    name,
+    price,
+    stock,
+    barcode,
+    sku,
+    costPrice,
+    minStock,
+    unit,
+    category,
+    imageUrl,
+    bookingEnabled,
+    bookingDurationMin,
+  } = body;
 
   const product = await prisma.product.update({
     where: { id },
@@ -38,6 +51,13 @@ export async function PUT(
       category: category || null,
       imageUrl: imageUrl || null,
       label: body.label || null,
+      bookingEnabled: typeof bookingEnabled === "boolean" ? bookingEnabled : undefined,
+      bookingDurationMin:
+        typeof bookingDurationMin === "number" && bookingDurationMin > 0
+          ? bookingDurationMin
+          : bookingDurationMin === null
+            ? null
+            : undefined,
     },
   });
 
@@ -54,7 +74,7 @@ export async function DELETE(
     await prisma.transactionItem.deleteMany({ where: { productId: id } });
     await prisma.product.delete({ where: { id } });
     return NextResponse.json({ message: "Produk berhasil dihapus" });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Gagal menghapus produk" }, { status: 500 });
   }
 }

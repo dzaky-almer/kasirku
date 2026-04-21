@@ -1,0 +1,58 @@
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { canAccessStore } from "@/lib/store-access";
+
+export async function PATCH(req: Request) {
+  const session = await auth();
+  const userId = session?.user?.id;
+  const body = await req.json().catch(() => null);
+
+  if (!body) {
+    return NextResponse.json({ error: "Request tidak valid" }, { status: 400 });
+  }
+
+  const {
+    storeId,
+    bookingGraceMinutes,
+    bookingOpenTime,
+    bookingCloseTime,
+    bookingSlotMinutes,
+  } = body as {
+    storeId?: string;
+    bookingGraceMinutes?: number;
+    bookingOpenTime?: string;
+    bookingCloseTime?: string;
+    bookingSlotMinutes?: number;
+  };
+
+  if (!storeId) {
+    return NextResponse.json({ error: "storeId wajib diisi" }, { status: 400 });
+  }
+
+  const store = await canAccessStore(storeId, userId);
+  if (!store) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const updated = await prisma.store.update({
+    where: { id: storeId },
+    data: {
+      bookingGraceMinutes:
+        typeof bookingGraceMinutes === "number" ? Math.min(Math.max(bookingGraceMinutes, 0), 240) : undefined,
+      bookingOpenTime: typeof bookingOpenTime === "string" ? bookingOpenTime : undefined,
+      bookingCloseTime: typeof bookingCloseTime === "string" ? bookingCloseTime : undefined,
+      bookingSlotMinutes:
+        typeof bookingSlotMinutes === "number" ? Math.min(Math.max(bookingSlotMinutes, 5), 180) : undefined,
+    },
+    select: {
+      id: true,
+      bookingGraceMinutes: true,
+      bookingOpenTime: true,
+      bookingCloseTime: true,
+      bookingSlotMinutes: true,
+    },
+  });
+
+  return NextResponse.json(updated);
+}

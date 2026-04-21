@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { validateRegistrationEmail, validateWhatsappNumber } from "@/lib/register-validation";
+import { generateUniqueStoreSlug } from "@/lib/slug";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -99,6 +100,7 @@ export async function POST(req: Request) {
   const hashedPassword = await bcrypt.hash(password, 10);
   const expiredAt = new Date();
   expiredAt.setDate(expiredAt.getDate() + codeRecord.durationDays);
+  const storeSlug = await generateUniqueStoreSlug(storeName);
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -111,6 +113,7 @@ export async function POST(req: Request) {
           stores: {
             create: {
               name: storeName.trim(),
+              slug: storeSlug,
               type: storeType?.trim() || "cafe",
               address: storeAddress?.trim() || null,
               waNumber: cleanWaNumber.normalized || null,

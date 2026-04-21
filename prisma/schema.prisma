@@ -22,8 +22,13 @@ model User {
 model Store {
   id           String        @id @default(uuid())
   name         String
+  slug         String?       @unique
   type         String
   userId       String
+  bookingGraceMinutes Int    @default(30)
+  bookingOpenTime String     @default("09:00")
+  bookingCloseTime String    @default("21:00")
+  bookingSlotMinutes Int     @default(30)
   address      String?
   waNumber     String?
   midtransServerKey String?
@@ -36,6 +41,8 @@ model Store {
   transactions Transaction[]
   promos       Promo[]
   demoSessions DemoSession[]
+  bookingResources BookingResource[]
+  bookings     Booking[]
 }
 
 model Product {
@@ -51,9 +58,12 @@ model Product {
   category         String?
   imageUrl         String?
   label            String?
+  bookingEnabled   Boolean           @default(false)
+  bookingDurationMin Int?
   storeId          String
   store            Store             @relation(fields: [storeId], references: [id])
   transactionItems TransactionItem[]
+  bookingItems     BookingItem[]
   promoRules       PromoRule[]       // ← ganti dari promos Promo[] ke PromoRule[]
 }
 
@@ -201,4 +211,72 @@ model DemoSession {
   store      Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@index([storeId])
+}
+
+model BookingResource {
+  id          String   @id @default(uuid())
+  storeId     String
+  type        String
+  name        String
+  capacity    Int?
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+
+  @@index([storeId, type, isActive])
+}
+
+model Booking {
+  id            String           @id @default(uuid())
+  storeId       String
+  resourceId    String?
+  type          String
+  source        String           @default("ONLINE")
+  status        String           @default("PENDING")
+  customerName  String
+  customerPhone String
+  customerNote  String?
+  bookingDate   DateTime
+  startTime     String
+  endTime       String?
+  pax           Int?
+  areaLabel     String?
+  barberName    String?
+  dpAmount      Int              @default(0)
+  dpStatus      String           @default("UNPAID")
+  paymentOrderId String?         @unique
+  paymentStatusRaw String?
+  dpPaidAt      DateTime?
+  checkInAt     DateTime?
+  completedAt   DateTime?
+  noShowAt      DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  store         Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  resource      BookingResource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  items         BookingItem[]
+
+  @@index([storeId, bookingDate, status])
+  @@index([resourceId, bookingDate, status])
+  @@index([paymentOrderId])
+}
+
+model BookingItem {
+  id          String   @id @default(uuid())
+  bookingId   String
+  productId   String?
+  name        String
+  itemType    String   @default("PRODUCT")
+  qty         Int      @default(1)
+  unitPrice   Int      @default(0)
+  durationMin Int?
+  createdAt   DateTime @default(now())
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId])
+  @@index([productId])
 }

@@ -19,7 +19,22 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { name, price, stock, storeId, barcode, sku, costPrice, minStock, unit, category, imageUrl, label } = body;
+  const {
+    name,
+    price,
+    stock,
+    storeId,
+    barcode,
+    sku,
+    costPrice,
+    minStock,
+    unit,
+    category,
+    imageUrl,
+    label,
+    bookingEnabled,
+    bookingDurationMin,
+  } = body;
 
   if (!name || !price || !storeId) {
     return NextResponse.json(
@@ -42,6 +57,9 @@ export async function POST(req: Request) {
       category: category || null,
       imageUrl: imageUrl || null,
       label: label || null,
+      bookingEnabled: Boolean(bookingEnabled),
+      bookingDurationMin:
+        typeof bookingDurationMin === "number" && bookingDurationMin > 0 ? bookingDurationMin : null,
     },
   });
 

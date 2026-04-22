@@ -66,7 +66,7 @@ const navItems = [
       </>
     )
   },
-    {
+  {
     label: "promo",
     href: "/promo",
     icon: (
@@ -74,7 +74,39 @@ const navItems = [
         <path d="M2 13V6l3-3 3 3 3-2 3 2v7M2 13h12" stroke="currentColor" />
       </>
     )
-  }
+  },
+  {
+    label: "Booking",
+    href: "/booking",
+    icon: (
+      <>
+        <rect x="2" y="3" width="12" height="11" rx="1" stroke="currentColor" />
+        <path d="M2 6h12" stroke="currentColor" />
+        <path d="M5 2v2M11 2v2" stroke="currentColor" />
+      </>
+    ),
+  },
+  {
+    label: "Aset Booking",
+    href: "/booking/resources",
+    icon: (
+      <>
+        <rect x="2" y="4" width="12" height="8" rx="1" stroke="currentColor" />
+        <path d="M6 4v8M10 4v8" stroke="currentColor" />
+      </>
+    ),
+  },
+  {
+    label: "Pengaturan Booking",
+    href: "/booking/settings",
+    icon: (
+      <>
+        <circle cx="8" cy="8" r="2" stroke="currentColor" />
+        <path d="M8 2v2M8 12v2M2 8h2M12 8h2M3.5 3.5l1.5 1.5M11 11l1.5 1.5M12.5 3.5L11 5M5 11l-1.5 1.5" stroke="currentColor" />
+      </>
+    ),
+  },
+
 ];
 
 const hiddenOn = ["/", "/home", "/login", "/register", "/admin/activate"];
@@ -114,11 +146,10 @@ export default function Sidebar() {
             key={nav.label}
             href={withMode(nav.href)}
             title={nav.label}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              isActive
-                ? "bg-amber-50 text-amber-800"
-                : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
-            }`}
+            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${isActive
+              ? "bg-amber-50 text-amber-800"
+              : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+              }`}
           >
             <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5}>
               {nav.icon}

@@ -37,8 +37,8 @@ export async function GET(req: Request) {
       items: {
         select: {
           id: true,
-          name: true,
           qty: true,
+          product: { select: { name: true } },
         },
       },
     },

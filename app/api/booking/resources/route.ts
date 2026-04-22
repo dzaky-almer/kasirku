@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     orderBy: [{ type: "asc" }, { name: "asc" }],
   });
 
-  return NextResponse.json(resources);
+  return NextResponse.json({ resources });
 }
 
 export async function POST(req: Request) {

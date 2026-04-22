@@ -25,10 +25,155 @@ function endOfDay(date: Date) {
   return value;
 }
 
+async function ensureTestingMerchant(password: string) {
+  const user = await prisma.user.upsert({
+    where: { email: "user2@toko.com" },
+    update: {
+      password,
+      name: "User Testing Toko",
+      phone: "6281234567890",
+    },
+    create: {
+      email: "user2@toko.com",
+      password,
+      name: "User Testing Toko",
+      phone: "6281234567890",
+    },
+  });
+
+  let store = await prisma.store.findFirst({
+    where: {
+      userId: user.id,
+      name: "Kopi Nusantara",
+    },
+  });
+
+  if (!store) {
+    store = await prisma.store.create({
+      data: {
+        userId: user.id,
+        name: "Kopi Nusantara",
+        slug: "kopi-nusantara",
+        type: "cafe",
+        bookingGraceMinutes: 30,
+        bookingOpenTime: "09:00",
+        bookingCloseTime: "21:00",
+        bookingSlotMinutes: 30,
+        isDemo: false,
+      },
+    });
+  } else {
+    store = await prisma.store.update({
+      where: { id: store.id },
+      data: {
+        slug: store.slug || "kopi-nusantara",
+        type: "cafe",
+        bookingGraceMinutes: 30,
+        bookingOpenTime: "09:00",
+        bookingCloseTime: "21:00",
+        bookingSlotMinutes: 30,
+        isDemo: false,
+      },
+    });
+  }
+
+  const existingProducts = await prisma.product.count({
+    where: { storeId: store.id },
+  });
+
+  if (existingProducts === 0) {
+    await prisma.product.createMany({
+      data: [
+        {
+          storeId: store.id,
+          name: "Cappuccino",
+          price: 28000,
+          stock: 200,
+          minStock: 5,
+          unit: "cup",
+          category: "Coffee",
+          bookingEnabled: true,
+        },
+        {
+          storeId: store.id,
+          name: "Manual Brew",
+          price: 35000,
+          stock: 120,
+          minStock: 5,
+          unit: "cup",
+          category: "Coffee",
+          bookingEnabled: true,
+        },
+        {
+          storeId: store.id,
+          name: "French Fries",
+          price: 22000,
+          stock: 180,
+          minStock: 5,
+          unit: "portion",
+          category: "Snack",
+          bookingEnabled: true,
+        },
+      ],
+    });
+  } else {
+    await prisma.product.updateMany({
+      where: { storeId: store.id },
+      data: { bookingEnabled: true },
+    });
+  }
+
+  const existingResources = await prisma.bookingResource.count({
+    where: { storeId: store.id },
+  });
+
+  if (existingResources === 0) {
+    await prisma.bookingResource.createMany({
+      data: [
+        {
+          storeId: store.id,
+          type: "AREA",
+          name: "Area Indoor",
+          description: "Area utama dekat bar kopi",
+          isActive: true,
+        },
+        {
+          storeId: store.id,
+          type: "AREA",
+          name: "Area Outdoor",
+          description: "Area santai dekat taman",
+          isActive: true,
+        },
+        {
+          storeId: store.id,
+          type: "TABLE",
+          name: "Meja Outdoor 01",
+          capacity: 4,
+          description: "Meja favorit dekat taman",
+          isActive: true,
+        },
+        {
+          storeId: store.id,
+          type: "ROOM",
+          name: "VIP Room 01",
+          capacity: 6,
+          description: "Cocok untuk meeting kecil",
+          isActive: true,
+        },
+      ],
+    });
+  }
+
+  console.log("Testing merchant siap: user2@toko.com / password123");
+  console.log(`Store booking test: ${store.name} (${store.id})`);
+}
+
 async function main() {
   const password = await bcrypt.hash("password123", 10);
 
   console.log("START SEEDING FULL...");
+
+  await ensureTestingMerchant(password);
 
   for (let u = 6; u <= 30; u++) {
     const user = await prisma.user.upsert({

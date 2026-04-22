@@ -19,17 +19,35 @@ export default function ShiftsPage() {
 
   const [openShift, setOpenShift] = useState<Shift | null>(null);
   const [openingCash, setOpeningCash] = useState<number>(0);
-  const [cashierName, setCashierName] = useState(""); 
+  const [openingCashInput, setOpeningCashInput] = useState("");
+  const [cashierName, setCashierName] = useState("");
   const [closingCash, setClosingCash] = useState<number | null>(null);
+  const [closingCashInput, setClosingCashInput] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // 🔥 FORMATTER
+  const formatInputRupiah = (value: string) => {
+    const cleaned = value.replace(/[^0-9]/g, "");
+    return new Intl.NumberFormat("id-ID").format(Number(cleaned));
+  };
+
+  const parseRupiah = (value: string) => {
+    return Number(value.replace(/\./g, "")) || 0;
+  };
 
   // 🔥 FETCH SHIFT AKTIF
   const fetchShift = async () => {
     try {
-      const activeStoreId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+      const activeStoreId = isDemoMode
+        ? demoStoreId
+        : (session?.user as any)?.storeId ?? "";
+
       if (!activeStoreId) return;
-      const res = await fetch(`/api/shifts/current?storeId=${encodeURIComponent(activeStoreId ?? "")}`);
+
+      const res = await fetch(
+        `/api/shifts/current?storeId=${encodeURIComponent(activeStoreId)}`
+      );
       const data = await res.json();
       setOpenShift(data?.id ? data : null);
     } catch (err) {
@@ -46,7 +64,9 @@ export default function ShiftsPage() {
   // 🟢 OPEN SHIFT
   const handleOpenShift = async () => {
     const userId = isDemoMode ? demoUserId : session?.user?.id ?? "";
-    const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+    const storeId = isDemoMode
+      ? demoStoreId
+      : (session?.user as any)?.storeId ?? "";
 
     if (!userId || !storeId) {
       alert("Session belum siap 😭");
@@ -72,7 +92,7 @@ export default function ShiftsPage() {
       },
       body: JSON.stringify({
         opening_cash: openingCash,
-        cashierName, // ✅ dari input manual
+        cashierName,
         userId,
         storeId,
       }),
@@ -89,7 +109,8 @@ export default function ShiftsPage() {
 
     setOpenShift(data);
     setOpeningCash(0);
-    setCashierName(""); // reset input
+    setOpeningCashInput("");
+    setCashierName("");
   };
 
   // 🔴 CLOSE SHIFT
@@ -126,6 +147,7 @@ export default function ShiftsPage() {
 
     setOpenShift(null);
     setClosingCash(null);
+    setClosingCashInput("");
     setNotes("");
   };
 
@@ -171,7 +193,6 @@ export default function ShiftsPage() {
               {openShift ? "Shift aktif" : "Tidak ada shift"}
             </span>
 
-            {/* ✅ tampil nama kasir aktif */}
             {openShift && (
               <span className="text-xs bg-amber-50 text-amber-700 px-3 py-1 rounded-full">
                 👤 {openShift.cashierName || "Kasir"}
@@ -205,12 +226,15 @@ export default function ShiftsPage() {
               />
 
               <input
-                type="number"
+                type="text"
                 placeholder="Uang awal"
+                value={openingCashInput}
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 text-black"
-                onChange={(e) =>
-                  setOpeningCash(Number(e.target.value) || 0)
-                }
+                onChange={(e) => {
+                  const formatted = formatInputRupiah(e.target.value);
+                  setOpeningCashInput(formatted);
+                  setOpeningCash(parseRupiah(formatted));
+                }}
               />
 
               <button
@@ -227,7 +251,6 @@ export default function ShiftsPage() {
           {openShift && (
             <div className="grid grid-cols-2 gap-4">
 
-              {/* INFO */}
               <div className="bg-white rounded-xl border border-gray-100 p-5">
                 <InfoRow label="Kasir" value={openShift.cashierName || "—"} />
                 <InfoRow label="Dibuka" value={getOpenTime()} />
@@ -235,17 +258,17 @@ export default function ShiftsPage() {
                 <InfoRow label="Expected" value={formatRupiah(expected)} />
               </div>
 
-              {/* CLOSE */}
               <div className="bg-white text-black rounded-xl border border-gray-100 p-5">
                 <input
-                  type="number"
+                  type="text"
                   placeholder="Uang akhir"
+                  value={closingCashInput}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3"
-                  onChange={(e) =>
-                    setClosingCash(
-                      e.target.value === "" ? null : Number(e.target.value)
-                    )
-                  }
+                  onChange={(e) => {
+                    const formatted = formatInputRupiah(e.target.value);
+                    setClosingCashInput(formatted);
+                    setClosingCash(parseRupiah(formatted));
+                  }}
                 />
 
                 <textarea
@@ -285,7 +308,6 @@ export default function ShiftsPage() {
   );
 }
 
-// 🔹 COMPONENT
 function Card({ label, value, highlight }: any) {
   return (
     <div className="bg-white rounded-xl p-4 border border-gray-100">

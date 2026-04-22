@@ -316,7 +316,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-gray-100 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">
           <span className="text-sm font-medium text-gray-900">Dashboard</span>

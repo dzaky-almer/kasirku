@@ -196,7 +196,7 @@ export default function ShiftsPage() {
             {openShift && (
               <span className="text-xs bg-amber-50 text-amber-700 px-3 py-1 rounded-full">
                 👤 {openShift.cashierName || "Kasir"}
-              </span>
+              </span> 
             )}
           </div>
         </header>

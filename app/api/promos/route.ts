@@ -1,7 +1,16 @@
 // app/api/promos/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+
+interface PromoRuleInput {
+  type: "PRODUCT" | "HAPPY_HOUR" | "MIN_TRANSACTION";
+  discountType: "PERCENT" | "NOMINAL";
+  discountValue: number | string;
+  productId?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  minTransaction?: number | string | null;
+}
 
 // ─────────────────────────────────────────────────────────
 // GET /api/promos?storeId=xxx
@@ -62,6 +71,16 @@ export async function POST(req: NextRequest) {
     startDate,
     endDate,
     rules, // PromoRule[]
+  }: {
+    storeId?: string;
+    name?: string;
+    tag?: string;
+    priority?: number | string;
+    stackable?: boolean;
+    maxUsage?: number | string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    rules?: PromoRuleInput[];
   } = body;
 
   if (!storeId || !name || !Array.isArray(rules) || rules.length === 0) {
@@ -94,7 +113,7 @@ export async function POST(req: NextRequest) {
       endDate: endDate ? new Date(endDate) : null,
       // Buat semua rules sekaligus
       rules: {
-        create: rules.map((r: any, idx: number) => ({
+        create: rules.map((r: PromoRuleInput, idx: number) => ({
           type: r.type,
           discountType: r.discountType,
           discountValue: Number(r.discountValue),
@@ -125,7 +144,22 @@ export async function POST(req: NextRequest) {
 // ─────────────────────────────────────────────────────────
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const { id, rules, ...data } = body;
+  const {
+    id,
+    rules,
+    ...data
+  }: {
+    id?: string;
+    rules?: PromoRuleInput[];
+    name?: string;
+    tag?: string | null;
+    priority?: number | string;
+    stackable?: boolean;
+    maxUsage?: number | string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    isActive?: boolean;
+  } = body;
 
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
@@ -171,7 +205,7 @@ export async function PATCH(req: NextRequest) {
         startDate: data.startDate ? new Date(data.startDate) : null,
         endDate: data.endDate ? new Date(data.endDate) : null,
         rules: {
-          create: rules.map((r: any, idx: number) => ({
+          create: rules.map((r: PromoRuleInput, idx: number) => ({
             type: r.type,
             discountType: r.discountType,
             discountValue: Number(r.discountValue),

@@ -50,6 +50,10 @@ interface BookingDetail {
     items: { product: { name: string; price: number }; qty: number; price: number }[];
 }
 
+interface SessionUser {
+    storeId?: string;
+}
+
 // ── Helpers ────────────────────────────────────────────────────
 function fmt(n: number) {
     if (n >= 1_000_000) return `Rp ${(n / 1_000_000).toFixed(1)}jt`;
@@ -117,8 +121,8 @@ function OfflineModal({
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Gagal");
             onSaved(); onClose();
-        } catch (e: any) {
-            setError(e.message);
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : "Gagal");
         } finally {
             setSaving(false);
         }
@@ -224,7 +228,7 @@ function BookingDrawer({ booking, onClose, onUpdate }: {
                             <span>📱</span>{booking.customerPhone}
                         </a>
                         {booking.customerNote && (
-                            <p className="text-xs text-gray-500 mt-2 italic">"{booking.customerNote}"</p>
+                            <p className="text-xs text-gray-500 mt-2 italic">&ldquo;{booking.customerNote}&rdquo;</p>
                         )}
                     </div>
 
@@ -418,7 +422,8 @@ function ScheduleBoard({
 export default function BookingDashboardPage() {
     const { data: session, status } = useSession();
     const { demoStoreId, isDemoMode } = useDemoMode();
-    const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+    const sessionUser = (session?.user ?? {}) as SessionUser;
+    const storeId = isDemoMode ? demoStoreId : sessionUser.storeId ?? "";
     const router = useRouter();
 
     const [selectedDate, setSelectedDate] = useState(toInput(new Date()));
@@ -465,7 +470,9 @@ export default function BookingDashboardPage() {
 
     useEffect(() => {
         if (status === "loading" || !storeId) return;
-        fetchAll();
+        queueMicrotask(() => {
+            void fetchAll();
+        });
         const interval = setInterval(fetchAll, 30_000); // refresh every 30s
         return () => clearInterval(interval);
     }, [storeId, status, fetchAll]);
@@ -571,7 +578,7 @@ export default function BookingDashboardPage() {
                         {resources.length === 0 ? (
                             <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
                                 <p className="text-gray-500 text-sm font-medium">Belum ada aset booking</p>
-                                <p className="text-gray-400 text-xs mt-1">Tambahkan aset terlebih dahulu di menu "Kelola Aset"</p>
+                                <p className="text-gray-400 text-xs mt-1">Tambahkan aset terlebih dahulu di menu &ldquo;Kelola Aset&rdquo;</p>
                                 <button onClick={() => router.push("/booking/resources")}
                                     className="mt-4 px-4 py-2 text-xs font-medium bg-amber-600 text-white rounded-lg">
                                     + Tambah Aset

@@ -17,6 +17,18 @@ interface Product {
 
 interface CartItem extends Product {
   qty: number;
+  note?: string;
+}
+
+interface HeldCart {
+  id: string;
+  label: string;
+  labelType: "customer" | "table" | "custom";
+  customerName?: string;
+  tableNumber?: string;
+  createdAt: string;
+  cart: CartItem[];
+  selectedPromoId: string | null;
 }
 
 // ── TIPE PROMO (updated: multi-rule) ────────────────────────
@@ -39,13 +51,40 @@ interface Promo {
   rules: PromoRule[];
 }
 
+interface SessionUser {
+  id?: string;
+  name?: string;
+  storeId?: string;
+}
+
+interface ShiftInfo {
+  id: string;
+}
+
+interface TransactionRecord {
+  id: string;
+}
+
+interface MidtransSnapCallbacks {
+  onSuccess: () => void | Promise<void>;
+  onPending: () => void;
+  onError: () => void;
+  onClose: () => void;
+}
+
+interface MidtransSnap {
+  pay: (token: string, callbacks: MidtransSnapCallbacks) => void;
+}
+
 function formatRupiah(amount: number): string {
   if (amount == null || isNaN(amount)) return "Rp 0";
   return "Rp " + amount.toLocaleString("id-ID");
 }
 
 declare global {
-  interface Window { snap: any; }
+  interface Window {
+    snap?: MidtransSnap;
+  }
 }
 
 // ── HELPER: validasi & hitung diskon (multi-rule) ────────────
@@ -140,8 +179,9 @@ export default function KasirPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const { demoStoreId, demoUserId, isDemoMode } = useDemoMode();
-  const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
-  const userId = isDemoMode ? demoUserId : session?.user?.id ?? "";
+  const sessionUser = (session?.user ?? {}) as SessionUser;
+  const storeId = isDemoMode ? demoStoreId : sessionUser.storeId ?? "";
+  const userId = isDemoMode ? demoUserId : sessionUser.id ?? "";
   const pushWithMode = (href: string) => router.push(isDemoMode ? `${href}?demo=true` : href);
   const strutRef = useRef<HTMLDivElement>(null);
 
@@ -164,15 +204,22 @@ export default function KasirPage() {
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "qris">("cash");
   const [qrisLoading, setQrisLoading] = useState(false);
-  const [showStruk, setShowStruk] = useState(false);
-  const [lastTransaction, setLastTransaction] = useState<any>(null);
-  const [shift, setShift] = useState<any>(null);
-  const [snapReady, setSnapReady] = useState(false);
+  const [lastTransaction, setLastTransaction] = useState<TransactionRecord | null>(null);
+  const [shift, setShift] = useState<ShiftInfo | null>(null);
 
   // ── STATE PROMO ──────────────────────────────────────────
   const [promos, setPromos] = useState<Promo[]>([]);
   const [selectedPromo, setSelectedPromo] = useState<Promo | null>(null);
   const [showPromoPanel, setShowPromoPanel] = useState(false);
+  const [heldCarts, setHeldCarts] = useState<HeldCart[]>([]);
+  const [showHoldModal, setShowHoldModal] = useState(false);
+  const [holdLabelType, setHoldLabelType] = useState<"customer" | "table" | "custom">("customer");
+  const [holdCustomerName, setHoldCustomerName] = useState("");
+  const [holdTableNumber, setHoldTableNumber] = useState("");
+  const [holdCustomLabel, setHoldCustomLabel] = useState("");
+  const [heldCartSearch, setHeldCartSearch] = useState("");
+
+  const heldCartStorageKey = storeId ? `kasirku_held_carts_${storeId}` : "";
 
   useEffect(() => {
     if (!storeId) {
@@ -226,10 +273,34 @@ export default function KasirPage() {
     setSelectedPromo(null);
     setShowPromoPanel(false);
     setLastTransaction(null);
-    setShowStruk(false);
     setSuccess(false);
     setPaid("");
   }, [storeId]);
+
+  useEffect(() => {
+    if (!heldCartStorageKey || typeof window === "undefined") {
+      setHeldCarts([]);
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(heldCartStorageKey);
+      if (!raw) {
+        setHeldCarts([]);
+        return;
+      }
+
+      const parsed = JSON.parse(raw);
+      setHeldCarts(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setHeldCarts([]);
+    }
+  }, [heldCartStorageKey]);
+
+  useEffect(() => {
+    if (!heldCartStorageKey || typeof window === "undefined") return;
+    window.localStorage.setItem(heldCartStorageKey, JSON.stringify(heldCarts));
+  }, [heldCarts, heldCartStorageKey]);
 
   // ── KALKULASI ────────────────────────────────────────────
   const subtotal = cart.reduce((sum, c) => sum + (c.price ?? 0) * c.qty, 0);
@@ -281,15 +352,104 @@ export default function KasirPage() {
     setCart((prev) => prev.filter((c) => c.id !== id));
   }
 
-  function clearCart() {
-    setCart([]);
+  function setItemNote(id: string, note: string) {
+    setCart((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, note: note.trim() ? note : "" }
+          : item
+      )
+    );
+  }
+
+  function resetCheckoutState() {
     setPaid("");
     setSuccess(false);
-    setShowStruk(false);
     setPaymentMethod("cash");
     setSelectedPromo(null);
     setShowPromoPanel(false);
   }
+
+  function clearCart() {
+    setCart([]);
+    resetCheckoutState();
+  }
+
+  function openHoldModal() {
+    if (cart.length === 0) return;
+    setHoldLabelType("customer");
+    setHoldCustomerName("");
+    setHoldTableNumber("");
+    setHoldCustomLabel("");
+    setShowHoldModal(true);
+  }
+
+  function holdCurrentCart() {
+    if (cart.length === 0) return;
+
+    const fallbackLabel = `Draft ${new Date().toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+
+    const customerName = holdCustomerName.trim();
+    const tableNumber = holdTableNumber.trim();
+    const customLabel = holdCustomLabel.trim();
+
+    const label =
+      holdLabelType === "customer"
+        ? customerName || fallbackLabel
+        : holdLabelType === "table"
+          ? (tableNumber ? `Meja ${tableNumber}` : fallbackLabel)
+          : customLabel || fallbackLabel;
+
+    const nextHeldCart: HeldCart = {
+      id: `${Date.now()}`,
+      label,
+      labelType: holdLabelType,
+      customerName: customerName || undefined,
+      tableNumber: tableNumber || undefined,
+      createdAt: new Date().toISOString(),
+      cart,
+      selectedPromoId: selectedPromo?.id ?? null,
+    };
+
+    setHeldCarts((prev) => [nextHeldCart, ...prev].slice(0, 10));
+    setCart([]);
+    resetCheckoutState();
+    setShowHoldModal(false);
+  }
+
+  function restoreHeldCart(heldCart: HeldCart) {
+    setCart(heldCart.cart);
+    setSelectedPromo(
+      heldCart.selectedPromoId
+        ? promos.find((promo) => promo.id === heldCart.selectedPromoId) ?? null
+        : null
+    );
+    setHeldCarts((prev) => prev.filter((entry) => entry.id !== heldCart.id));
+    setPaid("");
+    setSuccess(false);
+    setPaymentMethod("cash");
+    setShowPromoPanel(false);
+  }
+
+  function removeHeldCart(id: string) {
+    setHeldCarts((prev) => prev.filter((entry) => entry.id !== id));
+  }
+
+  const visibleHeldCarts = heldCarts.filter((heldCart) => {
+    const query = heldCartSearch.trim().toLowerCase();
+    if (!query) return true;
+
+    return [
+      heldCart.label,
+      heldCart.customerName,
+      heldCart.tableNumber,
+    ]
+      .filter(Boolean)
+      .some((value) => value!.toLowerCase().includes(query));
+  });
 
   // ── STRUK ────────────────────────────────────────────────
   function printStruk() {
@@ -309,6 +469,9 @@ export default function KasirPage() {
         <td style="padding:1px 0">${item.name}</td>
         <td style="text-align:right;white-space:nowrap">${item.qty} x ${formatRupiah(item.price)}</td>
       </tr>
+      ${item.note?.trim()
+            ? `<tr><td colspan="2" style="padding:0 0 3px 0;color:#666;font-size:11px">Catatan: ${item.note}</td></tr>`
+            : ""}
       <tr>
         <td colspan="2" style="text-align:right;padding-bottom:3px">${formatRupiah(item.price * item.qty)}</td>
       </tr>`
@@ -355,7 +518,7 @@ export default function KasirPage() {
   <table>
     <tr><td>No. Transaksi</td><td style="text-align:right">#${trxId.toUpperCase()}</td></tr>
     <tr><td>Tanggal</td><td style="text-align:right">${trxTime}</td></tr>
-    <tr><td>Kasir</td><td style="text-align:right">${isDemoMode ? "Kasir Demo" : session?.user?.name ?? "Kasir"}</td></tr>
+    <tr><td>Kasir</td><td style="text-align:right">${isDemoMode ? "Kasir Demo" : sessionUser.name ?? "Kasir"}</td></tr>
   </table>
   <div class="divider-dash"></div>
   <table>${itemRows}</table>
@@ -428,6 +591,7 @@ export default function KasirPage() {
           productId: item.id,
           qty: item.qty,
           price: item.price,
+          note: item.note?.trim() || undefined,
         })),
         promoId: promoResult.valid && selectedPromo ? selectedPromo.id : null,
         discountAmount: discount,
@@ -454,7 +618,6 @@ export default function KasirPage() {
       const ok = await saveTransaction("cash");
       if (!ok) { setLoading(false); return; }
       setSuccess(true);
-      setShowStruk(true);
       setTimeout(() => printStruk(), 400);
       setLoading(false);
       return;
@@ -486,7 +649,6 @@ export default function KasirPage() {
           const ok = await saveTransaction("qris");
           if (!ok) { setQrisLoading(false); return; }
           setSuccess(true);
-          setShowStruk(true);
           setTimeout(() => printStruk(), 400);
           setQrisLoading(false);
         },
@@ -516,7 +678,6 @@ export default function KasirPage() {
         strategy="afterInteractive"
         onLoad={() => {
           console.log("Midtrans SNAP READY");
-          setSnapReady(true);
         }}
       />
 
@@ -623,17 +784,97 @@ export default function KasirPage() {
         <aside className="w-80 bg-white border-l border-gray-100 flex flex-col flex-shrink-0">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-900">Pesanan</span>
-            {cart.length > 0 && (
-              <button
-                onClick={clearCart}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-              >
-                Kosongkan
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {heldCarts.length > 0 && (
+                <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded-full font-medium">
+                  {heldCarts.length} draft
+                </span>
+              )}
+              {cart.length > 0 && (
+                <button
+                  onClick={clearCart}
+                  className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  Kosongkan
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto px-5 py-3">
+            {heldCarts.length > 0 && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] font-medium text-gray-400 tracking-wider">DRAFT PESANAN</p>
+                  <p className="text-[10px] text-gray-300">maks 10</p>
+                </div>
+                <div className="mb-2">
+                  <input
+                    type="text"
+                    value={heldCartSearch}
+                    onChange={(e) => setHeldCartSearch(e.target.value)}
+                    placeholder="Cari draft, pelanggan, atau meja..."
+                    className="w-full px-3 py-2 text-[11px] text-gray-700 bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-300"
+                  />
+                </div>
+                <div className="space-y-2">
+                  {visibleHeldCarts.map((heldCart) => {
+                    const itemCount = heldCart.cart.reduce((sum, item) => sum + item.qty, 0);
+                    const heldTotal = heldCart.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+
+                    return (
+                      <div key={heldCart.id} className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-blue-900 truncate">{heldCart.label}</p>
+                            <p className="text-[10px] text-blue-700 mt-0.5">
+                              {itemCount} item · {formatRupiah(heldTotal)}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              <span className="text-[9px] bg-white/80 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
+                                {heldCart.labelType === "customer"
+                                  ? "Pelanggan"
+                                  : heldCart.labelType === "table"
+                                    ? "Meja"
+                                    : "Label"}
+                              </span>
+                              {heldCart.customerName && (
+                                <span className="text-[9px] text-blue-500">Nama: {heldCart.customerName}</span>
+                              )}
+                              {heldCart.tableNumber && (
+                                <span className="text-[9px] text-blue-500">Meja {heldCart.tableNumber}</span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-blue-400 mt-0.5">
+                              {new Date(heldCart.createdAt).toLocaleTimeString("id-ID", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => removeHeldCart(heldCart.id)}
+                            className="text-[10px] text-blue-400 hover:text-red-500 transition-colors"
+                          >
+                            Hapus
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => restoreHeldCart(heldCart)}
+                          className="w-full mt-2 py-2 rounded-lg bg-white border border-blue-200 text-xs font-medium text-blue-800 hover:bg-blue-100 transition-colors"
+                        >
+                          Panggil Draft
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {visibleHeldCarts.length === 0 && (
+                    <p className="text-[11px] text-center text-gray-400 py-3">Draft tidak ditemukan.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {cart.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-3">
@@ -659,6 +900,14 @@ export default function KasirPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
                       <p className="text-[10px] text-gray-400">{formatRupiah(item.price)}</p>
+                      <input
+                        type="text"
+                        value={item.note ?? ""}
+                        onChange={(e) => setItemNote(item.id, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        placeholder="Tambah catatan item..."
+                        className="mt-1 w-full px-2 py-1 text-[10px] text-gray-700 border border-gray-200 rounded-md outline-none focus:border-amber-400"
+                      />
                     </div>
                     <div className="flex items-center gap-1">
                       <button
@@ -845,22 +1094,31 @@ export default function KasirPage() {
                 </div>
               )}
 
-              <button
-                onClick={handleBayar}
-                disabled={
-                  cart.length === 0 ||
-                  (paymentMethod === "cash" && paidNum < total) ||
-                  loading ||
-                  qrisLoading
-                }
-                className="w-full py-2.5 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {loading || qrisLoading
-                  ? "Memproses..."
-                  : paymentMethod === "qris"
-                    ? "Bayar via QRIS"
-                    : "Bayar Cash"}
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={openHoldModal}
+                  disabled={cart.length === 0}
+                  className="py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Tahan
+                </button>
+                <button
+                  onClick={handleBayar}
+                  disabled={
+                    cart.length === 0 ||
+                    (paymentMethod === "cash" && paidNum < total) ||
+                    loading ||
+                    qrisLoading
+                  }
+                  className="py-2.5 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {loading || qrisLoading
+                    ? "Memproses..."
+                    : paymentMethod === "qris"
+                      ? "Bayar QRIS"
+                      : "Bayar Cash"}
+                </button>
+              </div>
             </div>
           )}
         </aside>
@@ -880,9 +1138,14 @@ export default function KasirPage() {
                 </div>
                 <div className="space-y-1 mb-3">
                   {cart.map((item) => (
-                    <div key={item.id} className="flex justify-between text-xs text-gray-700">
-                      <span className="flex-1 truncate pr-2">{item.name} x{item.qty}</span>
-                      <span className="flex-shrink-0">{formatRupiah(item.price * item.qty)}</span>
+                    <div key={item.id} className="space-y-0.5">
+                      <div className="flex justify-between text-xs text-gray-700">
+                        <span className="flex-1 truncate pr-2">{item.name} x{item.qty}</span>
+                        <span className="flex-shrink-0">{formatRupiah(item.price * item.qty)}</span>
+                      </div>
+                      {item.note?.trim() && (
+                        <p className="text-[10px] text-gray-400">Catatan: {item.note}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -938,6 +1201,102 @@ export default function KasirPage() {
                   className="w-full py-2 bg-white text-gray-500 text-sm font-medium rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
                 >
                   Kembali ke Dashboard
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showHoldModal && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div
+              className="bg-white rounded-2xl w-full max-w-sm overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-5 py-4 border-b border-gray-100">
+                <p className="text-sm font-medium text-gray-900">Tahan Pesanan</p>
+                <p className="text-[11px] text-gray-400 mt-1">Beri identitas draft agar mudah dipanggil kembali.</p>
+              </div>
+
+              <div className="px-5 py-4 space-y-4">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: "customer", label: "Pelanggan" },
+                    { id: "table", label: "Meja" },
+                    { id: "custom", label: "Label" },
+                  ].map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => setHoldLabelType(option.id as "customer" | "table" | "custom")}
+                      className={`py-2 text-xs font-medium rounded-lg border transition-colors ${
+                        holdLabelType === option.id
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+
+                {holdLabelType === "customer" && (
+                  <div>
+                    <label className="text-[11px] text-gray-500 mb-1 block">Nama pelanggan</label>
+                    <input
+                      type="text"
+                      value={holdCustomerName}
+                      onChange={(e) => setHoldCustomerName(e.target.value)}
+                      placeholder="Contoh: Andi"
+                      className="w-full px-3 py-2 text-sm text-gray-800 border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+                    />
+                  </div>
+                )}
+
+                {holdLabelType === "table" && (
+                  <div>
+                    <label className="text-[11px] text-gray-500 mb-1 block">Nomor / nama meja</label>
+                    <input
+                      type="text"
+                      value={holdTableNumber}
+                      onChange={(e) => setHoldTableNumber(e.target.value)}
+                      placeholder="Contoh: 07 atau VIP A"
+                      className="w-full px-3 py-2 text-sm text-gray-800 border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+                    />
+                  </div>
+                )}
+
+                {holdLabelType === "custom" && (
+                  <div>
+                    <label className="text-[11px] text-gray-500 mb-1 block">Label bebas</label>
+                    <input
+                      type="text"
+                      value={holdCustomLabel}
+                      onChange={(e) => setHoldCustomLabel(e.target.value)}
+                      placeholder="Contoh: Takeaway Sinta"
+                      className="w-full px-3 py-2 text-sm text-gray-800 border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+                    />
+                  </div>
+                )}
+
+                <div className="rounded-xl bg-blue-50 border border-blue-100 px-3 py-2.5">
+                  <p className="text-[11px] text-blue-700">
+                    Draft akan menyimpan item, catatan item, dan promo yang sedang dipakai.
+                  </p>
+                </div>
+              </div>
+
+              <div className="px-5 py-4 border-t border-gray-100 flex gap-2">
+                <button
+                  onClick={() => setShowHoldModal(false)}
+                  className="flex-1 py-2.5 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={holdCurrentCart}
+                  className="flex-1 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
+                >
+                  Simpan Draft
                 </button>
               </div>
             </div>

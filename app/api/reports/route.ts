@@ -52,9 +52,13 @@ export async function GET(req: Request) {
     orderBy: { createdAt: "asc" },
   });
 
-  const totalRevenue = transactions.reduce((s, t) => s + t.total, 0);
-  const totalTransactions = transactions.length;
-  const totalItems = transactions.reduce(
+  const completedTransactions = transactions.filter(
+    (transaction) => transaction.status === "COMPLETED"
+  );
+
+  const totalRevenue = completedTransactions.reduce((s, t) => s + t.total, 0);
+  const totalTransactions = completedTransactions.length;
+  const totalItems = completedTransactions.reduce(
     (s, t) => s + t.items.reduce((si, i) => si + i.qty, 0),
     0
   );
@@ -62,7 +66,7 @@ export async function GET(req: Request) {
     totalTransactions > 0 ? Math.round(totalRevenue / totalTransactions) : 0;
 
   const productMap: Record<string, { name: string; qty: number; revenue: number }> = {};
-  for (const trx of transactions) {
+  for (const trx of completedTransactions) {
     for (const item of trx.items) {
       const key = item.productId;
       if (!productMap[key]) {
@@ -83,7 +87,7 @@ export async function GET(req: Request) {
     .slice(0, 10);
 
   const dailyMap: Record<string, { date: string; revenue: number; transactions: number }> = {};
-  for (const trx of transactions) {
+  for (const trx of completedTransactions) {
     const day = formatDateInput(trx.createdAt);
     if (!dailyMap[day]) {
       dailyMap[day] = { date: day, revenue: 0, transactions: 0 };
@@ -97,7 +101,7 @@ export async function GET(req: Request) {
   );
 
   const hourMap: Record<number, number> = {};
-  for (const trx of transactions) {
+  for (const trx of completedTransactions) {
     const hour = new Date(trx.createdAt).getHours();
     hourMap[hour] = (hourMap[hour] ?? 0) + 1;
   }

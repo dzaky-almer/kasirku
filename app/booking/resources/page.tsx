@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useDemoMode } from "@/lib/demo";
 
@@ -12,6 +12,10 @@ interface Resource {
     capacity: number | null;
     description: string | null;
     isActive: boolean;
+}
+
+interface SessionUser {
+    storeId?: string;
 }
 
 const RESOURCE_TYPES = [
@@ -42,7 +46,9 @@ function ResourceModal({
     const needsCapacity = form.type === "TABLE" || form.type === "AREA" || form.type === "ROOM";
 
     useEffect(() => {
-        if (open) {
+        if (!open) return;
+
+        queueMicrotask(() => {
             setForm({
                 type: initial?.type ?? "BARBER",
                 name: initial?.name ?? "",
@@ -50,7 +56,7 @@ function ResourceModal({
                 description: initial?.description ?? "",
                 isActive: initial?.isActive ?? true,
             });
-        }
+        });
     }, [open, initial]);
 
     if (!open) return null;
@@ -191,7 +197,8 @@ function ResourceModal({
 export default function BookingResourcesPage() {
     const { data: session, status } = useSession();
     const { demoStoreId, isDemoMode } = useDemoMode();
-    const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+    const sessionUser = (session?.user ?? {}) as SessionUser;
+    const storeId = isDemoMode ? demoStoreId : sessionUser.storeId ?? "";
 
     const [resources, setResources] = useState<Resource[]>([]);
     const [loading, setLoading] = useState(false);
@@ -201,7 +208,7 @@ export default function BookingResourcesPage() {
     const [editTarget, setEditTarget] = useState<Resource | null>(null);
     const [filterType, setFilterType] = useState<string>("ALL");
 
-    async function fetchResources() {
+    const fetchResources = useCallback(async () => {
         setLoading(true); setError("");
         try {
             const res = await fetch(`/api/booking/resources?storeId=${storeId}`);
@@ -212,12 +219,12 @@ export default function BookingResourcesPage() {
         } finally {
             setLoading(false);
         }
-    }
+    }, [storeId]);
 
     useEffect(() => {
         if (status === "loading" || !storeId) return;
-        fetchResources();
-    }, [storeId, status]);
+        void fetchResources();
+    }, [storeId, status, fetchResources]);
 
     async function handleSave(form: Partial<Resource>) {
         if (editTarget?.id) {

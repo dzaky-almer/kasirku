@@ -34,6 +34,7 @@ export async function GET(req: Request) {
     prisma.transaction.findMany({
       where: {
         storeId,
+        status: "COMPLETED",
         createdAt: {
           gte: last7Start,
           lte: todayRange.end,
@@ -48,6 +49,7 @@ export async function GET(req: Request) {
     prisma.transaction.findMany({
       where: {
         storeId,
+        status: "COMPLETED",
         createdAt: {
           gte: todayRange.start,
           lte: todayRange.end,

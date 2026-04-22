@@ -48,11 +48,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ token: data.token, orderId });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
     console.error("MIDTRANS ERROR:", err);
 
     return NextResponse.json(
-      { error: "Internal server error", detail: err.message },
+      { error: "Internal server error", detail: message },
       { status: 500 }
     );
   }

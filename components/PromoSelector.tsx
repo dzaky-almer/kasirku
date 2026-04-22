@@ -1,7 +1,7 @@
 // components/PromoSelector.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { calculateDiscount, CartItem, Promo } from "@/lib/promo";
 
 interface PromoSelectorProps {
@@ -19,30 +19,52 @@ export default function PromoSelector({
 }: PromoSelectorProps) {
   const [promos, setPromos] = useState<Promo[]>([]);
   const [selected, setSelected] = useState<Promo | null>(null);
-  const [result, setResult] = useState<{ discountAmount: number; isValid: boolean; reason?: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Fetch promo aktif
   useEffect(() => {
-    if (!storeId) return;
-    setLoading(true);
-    fetch(`/api/promos?storeId=${storeId}`)
-      .then((r) => r.json())
-      .then((data) => setPromos(data))
-      .finally(() => setLoading(false));
-  }, [storeId]);
-
-  // Hitung ulang diskon setiap kali item/subtotal/promo berubah
-  useEffect(() => {
-    if (!selected) {
-      setResult(null);
-      onPromoApplied(null, 0);
+    if (!storeId) {
+      setPromos([]);
       return;
     }
-    const calc = calculateDiscount(selected, items, subtotal);
-    setResult(calc);
-    onPromoApplied(calc.isValid ? selected.id : null, calc.isValid ? calc.discountAmount : 0);
+
+    let cancelled = false;
+
+    const loadPromos = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/promos?storeId=${storeId}`);
+        const data: Promo[] = await response.json();
+        if (!cancelled) {
+          setPromos(Array.isArray(data) ? data : []);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadPromos();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId]);
+
+  const result = useMemo(() => {
+    if (!selected) {
+      return null;
+    }
+    return calculateDiscount(selected, items, subtotal);
   }, [selected, items, subtotal]);
+
+  useEffect(() => {
+    onPromoApplied(
+      result?.isValid ? selected?.id ?? null : null,
+      result?.isValid ? result.discountAmount : 0
+    );
+  }, [onPromoApplied, result, selected]);
 
   function handleSelect(promo: Promo | null) {
     setSelected(promo);

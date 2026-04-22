@@ -13,9 +13,26 @@ interface Shift {
   cashierName?: string;
 }
 
+interface SessionUser {
+  id?: string;
+  storeId?: string;
+}
+
+interface CardProps {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}
+
+interface InfoRowProps {
+  label: string;
+  value: string;
+}
+
 export default function ShiftsPage() {
   const { data: session, status } = useSession();
   const { demoStoreId, demoUserId, isDemoMode } = useDemoMode();
+  const sessionUser = (session?.user ?? {}) as SessionUser;
 
   const [openShift, setOpenShift] = useState<Shift | null>(null);
   const [openingCash, setOpeningCash] = useState<number>(0);
@@ -36,37 +53,48 @@ export default function ShiftsPage() {
     return Number(value.replace(/\./g, "")) || 0;
   };
 
-  // 🔥 FETCH SHIFT AKTIF
-  const fetchShift = async () => {
-    try {
-      const activeStoreId = isDemoMode
-        ? demoStoreId
-        : (session?.user as any)?.storeId ?? "";
-
-      if (!activeStoreId) return;
-
-      const res = await fetch(
-        `/api/shifts/current?storeId=${encodeURIComponent(activeStoreId)}`
-      );
-      const data = await res.json();
-      setOpenShift(data?.id ? data : null);
-    } catch (err) {
-      console.error("Fetch shift error:", err);
-    }
-  };
-
   useEffect(() => {
-    if ((status === "authenticated" && !isDemoMode) || demoStoreId) {
-      fetchShift();
+    if (!((status === "authenticated" && !isDemoMode) || demoStoreId)) {
+      return;
     }
-  }, [status, demoStoreId, isDemoMode, session]);
+
+    const activeStoreId = isDemoMode
+      ? demoStoreId
+      : sessionUser.storeId ?? "";
+
+    if (!activeStoreId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadShift = async () => {
+      try {
+        const res = await fetch(
+          `/api/shifts/current?storeId=${encodeURIComponent(activeStoreId)}`
+        );
+        const data = await res.json();
+        if (!cancelled) {
+          setOpenShift(data?.id ? data : null);
+        }
+      } catch (err) {
+        console.error("Fetch shift error:", err);
+      }
+    };
+
+    void loadShift();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, demoStoreId, isDemoMode, sessionUser.storeId]);
 
   // 🟢 OPEN SHIFT
   const handleOpenShift = async () => {
-    const userId = isDemoMode ? demoUserId : session?.user?.id ?? "";
+    const userId = isDemoMode ? demoUserId : sessionUser.id ?? "";
     const storeId = isDemoMode
       ? demoStoreId
-      : (session?.user as any)?.storeId ?? "";
+      : sessionUser.storeId ?? "";
 
     if (!userId || !storeId) {
       alert("Session belum siap 😭");
@@ -308,7 +336,7 @@ export default function ShiftsPage() {
   );
 }
 
-function Card({ label, value, highlight }: any) {
+function Card({ label, value, highlight = false }: CardProps) {
   return (
     <div className="bg-white rounded-xl p-4 border border-gray-100">
       <p className="text-xs text-gray-400 mb-1">{label}</p>
@@ -319,7 +347,7 @@ function Card({ label, value, highlight }: any) {
   );
 }
 
-function InfoRow({ label, value }: any) {
+function InfoRow({ label, value }: InfoRowProps) {
   return (
     <div className="flex justify-between py-2 text-sm">
       <span className="text-gray-500">{label}</span>

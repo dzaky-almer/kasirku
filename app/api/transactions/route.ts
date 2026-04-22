@@ -8,6 +8,7 @@ interface CartItemInput {
   productId: string;
   qty: number;
   price: number;
+  note?: string;
 }
 
 function getErrorMessage(error: unknown) {
@@ -124,6 +125,7 @@ export async function POST(req: Request) {
               productId: item.productId,
               qty: item.qty,
               price: item.price,
+              note: item.note?.trim() || null,
             })),
           },
         },
@@ -188,6 +190,7 @@ export async function GET(req: Request) {
   const transactions = await prisma.transaction.findMany({
     where: {
       storeId,
+      status: "COMPLETED",
       ...(dateFilter && {
         createdAt: {
           gte: dateFilter.start,

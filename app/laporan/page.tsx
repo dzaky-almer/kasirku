@@ -33,11 +33,19 @@ interface TxnItem {
   productId: string;
   qty: number;
   price: number;
+  note?: string | null;
   product?: { name: string };
 }
 interface Transaction {
   id: string;
   total: number;
+  discountAmount?: number;
+  paymentMethod?: string;
+  status?: "COMPLETED" | "VOID" | "REFUNDED";
+  voidReason?: string | null;
+  refundReason?: string | null;
+  voidedAt?: string | null;
+  refundedAt?: string | null;
   createdAt: string;
   items: TxnItem[];
 }
@@ -1140,6 +1148,7 @@ export default function LaporanPage() {
   const [hourChart, setHourChart] = useState<HourChart[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [storeName, setStoreName] = useState("TokoKu");
 
   useEffect(() => {
     const today = new Date();
@@ -1163,6 +1172,19 @@ export default function LaporanPage() {
     fetchLaporan();
   }, [storeId, status, dateFrom, dateTo]);
 
+  useEffect(() => {
+    if (status === "loading" || !storeId) return;
+
+    fetch("/api/stores")
+      .then((res) => res.json())
+      .then((stores) => {
+        if (!Array.isArray(stores)) return;
+        const activeStore = stores.find((store) => store.id === storeId);
+        if (activeStore?.name) setStoreName(activeStore.name);
+      })
+      .catch(() => {});
+  }, [storeId, status]);
+
   async function fetchLaporan() {
     setLoading(true);
     setError("");
@@ -1185,6 +1207,45 @@ export default function LaporanPage() {
     }
   }
 
+  async function handleTransactionAction(
+    trx: Transaction,
+    action: "VOID" | "REFUND"
+  ) {
+    if ((trx.status ?? "COMPLETED") !== "COMPLETED") return;
+
+    const reason = window.prompt(
+      action === "VOID"
+        ? "Masukkan alasan void transaksi:"
+        : "Masukkan alasan refund transaksi:"
+    )?.trim();
+
+    if (!reason) return;
+
+    const confirmed = window.confirm(
+      action === "VOID"
+        ? "Transaksi akan dibatalkan dan stok dikembalikan. Lanjutkan?"
+        : "Transaksi akan di-refund penuh dan stok dikembalikan. Lanjutkan?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/transactions/${trx.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reason }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Gagal memperbarui transaksi");
+
+      await fetchLaporan();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Gagal memperbarui transaksi";
+      window.alert(message);
+    }
+  }
+
   function buildRows() {
     let no = 1;
     return transactions.flatMap((trx) =>
@@ -1199,6 +1260,105 @@ export default function LaporanPage() {
         subtotal: item.qty * item.price,
       }))
     );
+  }
+
+  function printTransaction(trx: Transaction) {
+    const subtotal = trx.items.reduce((sum, item) => sum + item.qty * item.price, 0);
+    const discount = trx.discountAmount ?? Math.max(0, subtotal - trx.total);
+    const paymentMethod = trx.paymentMethod === "qris" ? "QRIS" : "TUNAI";
+    const transactionStatus = trx.status ?? "COMPLETED";
+    const statusLabel =
+      transactionStatus === "VOID"
+        ? "VOID"
+        : transactionStatus === "REFUNDED"
+          ? "REFUND"
+          : "SELESAI";
+    const printedAt = new Date(trx.createdAt).toLocaleString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const itemRows = trx.items
+      .map(
+        (item) => `
+      <tr>
+        <td style="padding:1px 0">${item.product?.name ?? item.productId}</td>
+        <td style="text-align:right;white-space:nowrap">${item.qty} x ${fmtFull(item.price)}</td>
+      </tr>
+      ${item.note?.trim()
+            ? `<tr><td colspan="2" style="padding:0 0 3px 0;color:#666;font-size:11px">Catatan: ${item.note}</td></tr>`
+            : ""}
+      <tr>
+        <td colspan="2" style="text-align:right;padding-bottom:3px">${fmtFull(item.qty * item.price)}</td>
+      </tr>`
+      )
+      .join("");
+
+    const discountRow =
+      discount > 0
+        ? `<tr><td>Diskon</td><td style="text-align:right">-${fmtFull(discount)}</td></tr>`
+        : "";
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Reprint Struk</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', Courier, monospace; font-size: 12px; width: 300px; margin: 0 auto; padding: 8px; color: #000; }
+  .center { text-align: center; }
+  .store-name { font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+  .divider-solid { border-top: 1px solid #000; margin: 6px 0; }
+  .divider-dash { border-top: 1px dashed #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  td { vertical-align: top; font-size: 12px; }
+  .total-row td { font-size: 13px; font-weight: bold; padding-top: 3px; }
+  .footer { text-align: center; margin-top: 8px; font-size: 11px; }
+  @media print {
+    body { width: 100%; }
+    @page { margin: 4mm; size: 80mm auto; }
+  }
+</style>
+</head><body>
+  <div class="center">
+    <div class="store-name">${storeName.toUpperCase()}</div>
+    <div>Reprint Struk</div>
+  </div>
+  <div class="divider-solid"></div>
+  <table>
+    <tr><td>No. Transaksi</td><td style="text-align:right">#${trx.id.slice(0, 8).toUpperCase()}</td></tr>
+    <tr><td>Tanggal</td><td style="text-align:right">${printedAt}</td></tr>
+    <tr><td>Status</td><td style="text-align:right">${statusLabel}</td></tr>
+  </table>
+  <div class="divider-dash"></div>
+  <table>${itemRows}</table>
+  <div class="divider-dash"></div>
+  <table>
+    <tr><td>Subtotal</td><td style="text-align:right">${fmtFull(subtotal)}</td></tr>
+    ${discountRow}
+    <tr class="total-row"><td>TOTAL</td><td style="text-align:right">${fmtFull(trx.total)}</td></tr>
+  </table>
+  <div class="divider-dash"></div>
+  <table>
+    <tr><td>Metode Bayar</td><td style="text-align:right">${paymentMethod}</td></tr>
+  </table>
+  <div class="divider-solid"></div>
+  <div class="footer">
+    <div>*** CETAK ULANG ***</div>
+    <div style="margin-top:4px;font-size:10px">Powered by KasirKu</div>
+  </div>
+</body></html>`;
+
+    const win = window.open("", "_blank", "width=400,height=700");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => {
+      win.print();
+      win.close();
+    }, 300);
   }
 
   function exportExcel() {
@@ -1502,33 +1662,108 @@ export default function LaporanPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      {["NO", "TGL", "WAKTU", "ID TRANSAKSI", "NAMA PRODUK", "QTY", "HARGA", "SUBTOTAL"].map(h => (
+                      {["NO", "TGL", "WAKTU", "ID TRANSAKSI", "NAMA PRODUK", "QTY", "HARGA", "SUBTOTAL", "AKSI"].map(h => (
                         <th key={h} className="text-left text-[10px] font-medium text-gray-400 tracking-wider px-4 py-3">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {loading ? (
-                      <tr><td colSpan={8} className="text-center py-12 text-sm text-gray-400">Memuat laporan...</td></tr>
+                      <tr><td colSpan={9} className="text-center py-12 text-sm text-gray-400">Memuat laporan...</td></tr>
                     ) : rows.length === 0 ? (
-                      <tr><td colSpan={8} className="text-center py-12 text-sm text-gray-400">Tidak ada transaksi pada periode ini.</td></tr>
-                    ) : rows.map(r => (
-                      <tr key={`${r.idTrx}-${r.no}`} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 text-sm text-gray-500">{r.no}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500">{r.tanggal}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{r.waktu}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-gray-500">{r.idTrx}...</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{r.namaProduk}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{r.qty}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{fmtFull(r.harga)}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-amber-700">{fmtFull(r.subtotal)}</td>
-                      </tr>
+                      <tr><td colSpan={9} className="text-center py-12 text-sm text-gray-400">Tidak ada transaksi pada periode ini.</td></tr>
+                    ) : transactions.map((trx, trxIndex) => (
+                      trx.items.map((item, itemIndex) => (
+                        <tr key={`${trx.id}-${item.productId}-${itemIndex}`} className="hover:bg-gray-50 transition-colors align-top">
+                          {itemIndex === 0 && (
+                            <>
+                              <td rowSpan={trx.items.length} className="px-4 py-3 text-sm text-gray-500">{trxIndex + 1}</td>
+                              <td rowSpan={trx.items.length} className="px-4 py-3 text-xs text-gray-500">
+                                {new Date(trx.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                              </td>
+                              <td rowSpan={trx.items.length} className="px-4 py-3 text-sm text-gray-700">
+                                {new Date(trx.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                              </td>
+                              <td rowSpan={trx.items.length} className="px-4 py-3">
+                                <div className="space-y-1">
+                                  <p className="text-xs font-mono text-gray-500">{trx.id.slice(0, 8)}...</p>
+                                  {trx.discountAmount ? (
+                                    <p className="text-[10px] text-green-600">Diskon {fmtFull(trx.discountAmount)}</p>
+                                  ) : null}
+                                  <p className="text-[10px] text-gray-400 uppercase">{trx.paymentMethod ?? "cash"}</p>
+                                  <span
+                                    className={`inline-flex w-fit px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                                      (trx.status ?? "COMPLETED") === "VOID"
+                                        ? "bg-red-50 text-red-600"
+                                        : (trx.status ?? "COMPLETED") === "REFUNDED"
+                                          ? "bg-blue-50 text-blue-600"
+                                          : "bg-emerald-50 text-emerald-700"
+                                    }`}
+                                  >
+                                    {(trx.status ?? "COMPLETED") === "VOID"
+                                      ? "VOID"
+                                      : (trx.status ?? "COMPLETED") === "REFUNDED"
+                                        ? "REFUND"
+                                        : "SELESAI"}
+                                  </span>
+                                  {trx.voidReason ? (
+                                    <p className="text-[10px] text-red-400">Alasan: {trx.voidReason}</p>
+                                  ) : null}
+                                  {trx.refundReason ? (
+                                    <p className="text-[10px] text-blue-400">Alasan: {trx.refundReason}</p>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </>
+                          )}
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            <div>
+                              <p>{item.product?.name ?? "-"}</p>
+                              {item.note?.trim() && (
+                                <p className="text-[10px] text-gray-400 mt-0.5">Catatan: {item.note}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{item.qty}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{fmtFull(item.price)}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-amber-700">{fmtFull(item.qty * item.price)}</td>
+                          {itemIndex === 0 && (
+                            <td rowSpan={trx.items.length} className="px-4 py-3">
+                              <div className="space-y-2">
+                                <p className="text-sm font-medium text-gray-800">{fmtFull(trx.total)}</p>
+                                <button
+                                  onClick={() => printTransaction(trx)}
+                                  className="px-3 py-1.5 text-[11px] font-medium bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                  Cetak Ulang
+                                </button>
+                                {(trx.status ?? "COMPLETED") === "COMPLETED" && (
+                                  <>
+                                    <button
+                                      onClick={() => handleTransactionAction(trx, "VOID")}
+                                      className="px-3 py-1.5 text-[11px] font-medium bg-red-50 border border-red-200 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                                    >
+                                      Void
+                                    </button>
+                                    <button
+                                      onClick={() => handleTransactionAction(trx, "REFUND")}
+                                      className="px-3 py-1.5 text-[11px] font-medium bg-blue-50 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                                    >
+                                      Refund
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))
                     ))}
                   </tbody>
                   {rows.length > 0 && summary && (
                     <tfoot>
                       <tr className="border-t border-gray-200 bg-gray-50">
-                        <td colSpan={7} className="px-4 py-3 text-xs font-medium text-gray-500 text-right">Total Omzet</td>
+                        <td colSpan={8} className="px-4 py-3 text-xs font-medium text-gray-500 text-right">Total Omzet</td>
                         <td className="px-4 py-3 text-sm font-medium text-amber-700">{fmtFull(summary.totalRevenue)}</td>
                       </tr>
                     </tfoot>

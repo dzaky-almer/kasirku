@@ -19,6 +19,10 @@ interface BookingProduct {
     bookingDurationMin: number | null;
 }
 
+interface SessionUser {
+    storeId?: string;
+}
+
 function fmtPrice(n: number) {
     return "Rp " + n.toLocaleString("id-ID");
 }
@@ -26,7 +30,8 @@ function fmtPrice(n: number) {
 export default function BookingSettingsPage() {
     const { data: session, status } = useSession();
     const { demoStoreId, isDemoMode } = useDemoMode();
-    const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+    const sessionUser = (session?.user ?? {}) as SessionUser;
+    const storeId = isDemoMode ? demoStoreId : sessionUser.storeId ?? "";
 
     const [settings, setSettings] = useState<BookingSettings>({
         bookingOpenTime: "08:00",

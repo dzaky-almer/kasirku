@@ -16,7 +16,55 @@ import {
 
 interface DashTxn { item: string; time: string; qty: number; amount: number; }
 interface DashStock { name: string; stock: number; unit: string; status: string; }
-interface DashTop { name: string; sold: number; revenue: number; profit: number; }
+
+interface SessionUser {
+  storeId?: string;
+  email?: string;
+}
+
+interface TransactionProduct {
+  id?: string;
+  name?: string;
+  costPrice?: number;
+}
+
+interface TransactionItem {
+  productId: string;
+  qty: number;
+  price: number;
+  costPrice?: number;
+  product?: TransactionProduct;
+}
+
+interface DashboardTransaction {
+  total: number;
+  createdAt: string;
+  items?: TransactionItem[];
+}
+
+interface DashboardProduct {
+  id: string;
+  name: string;
+  stock: number;
+  minStock?: number;
+  unit?: string;
+}
+
+interface TooltipPayloadItem {
+  value: number;
+}
+
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+  label?: string;
+}
+
+interface CustomDotProps {
+  cx?: number;
+  cy?: number;
+  index?: number;
+}
 
 interface StockTurnover {
   name: string;
@@ -29,7 +77,6 @@ interface StockTurnover {
 
 const emptyTxn: DashTxn[] = [];
 const emptyStock: DashStock[] = [];
-const emptyTop: DashTop[] = [];
 const emptySales = [0, 0, 0, 0, 0, 0, 0];
 
 function getLast7Labels(): string[] {
@@ -52,7 +99,7 @@ function getToday(): string {
   });
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (!active || !payload || !payload.length) return null;
   return (
     <div style={{
@@ -70,6 +117,18 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
+function renderCustomDot(
+  { cx, cy, index = 0 }: CustomDotProps,
+  chartData: Array<{ name: string; omzet: number }>
+) {
+  if (cx == null || cy == null) return null;
+  if (index === 0) {
+    return <circle cx={cx} cy={cy} r={5} fill="#BA7517" stroke="#fff" strokeWidth={2.5} />;
+  }
+  const isUp = chartData[index].omzet >= chartData[index - 1].omzet;
+  return <circle cx={cx} cy={cy} r={5} fill={isUp ? "#16a34a" : "#dc2626"} stroke="#fff" strokeWidth={2.5} />;
+}
+
 // ── Komponen peringatan stok compact (1 baris, bisa expand) ──
 function StockWarningBar({ fastStock, slowStock, deadStock }: {
   fastStock: StockTurnover[];
@@ -77,7 +136,6 @@ function StockWarningBar({ fastStock, slowStock, deadStock }: {
   deadStock: StockTurnover[];
 }) {
   const [open, setOpen] = useState(false);
-  const total = fastStock.length + slowStock.length + deadStock.length;
 
   return (
     <div className="mb-4">
@@ -147,14 +205,14 @@ export default function DashboardPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const { demoStoreId, isDemoMode } = useDemoMode();
-  const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+  const sessionUser = (session?.user ?? {}) as SessionUser;
+  const storeId = isDemoMode ? demoStoreId : sessionUser.storeId ?? "";
   const pushWithMode = (href: string) => router.push(isDemoMode ? `${href}?demo=true` : href);
 
   const [recentTxns, setRecentTxns] = useState<DashTxn[]>(emptyTxn);
   const [stockList, setStockList] = useState<DashStock[]>(emptyStock);
-  const [topProducts, setTopProducts] = useState<DashTop[]>(emptyTop);
   const [salesData, setSalesData] = useState<number[]>(emptySales);
-  const [allTodayTxns, setAllTodayTxns] = useState<any[]>([]);
+  const [allTodayTxns, setAllTodayTxns] = useState<DashboardTransaction[]>([]);
   const [netProfit, setNetProfit] = useState(0);
   const [stockTurnover, setStockTurnover] = useState<StockTurnover[]>([]);
   const salesLabels = getLast7Labels();
@@ -176,11 +234,11 @@ export default function DashboardPage() {
       last7Dates.map((date) =>
         fetch(`/api/transactions?storeId=${storeId}&date=${date}`)
           .then((r) => r.json())
-          .then((data: any[]) => {
+          .then((data: DashboardTransaction[]) => {
             if (!Array.isArray(data)) return { revenue: 0, cogs: 0, soldMap: {} as Record<string, number> };
             const revenue = data.reduce((sum, t) => sum + (t.total ?? 0), 0);
             const cogs = data.reduce((sum, t) =>
-              sum + (t.items ?? []).reduce((s: number, item: any) =>
+              sum + (t.items ?? []).reduce((s: number, item: TransactionItem) =>
                 s + (item.qty ?? 0) * (item.costPrice ?? item.product?.costPrice ?? 0), 0), 0);
             const soldMap: Record<string, number> = {};
             for (const t of data) {
@@ -210,7 +268,7 @@ export default function DashboardPage() {
       // Fetch produk untuk hitung turnover stok
       fetch(`/api/products?storeId=${storeId}`)
         .then((r) => r.json())
-        .then((products: any[]) => {
+        .then((products: DashboardProduct[]) => {
           if (!Array.isArray(products)) return;
 
           const stocks: DashStock[] = products.map((p) => ({
@@ -248,13 +306,13 @@ export default function DashboardPage() {
       // Transaksi hari ini
       fetch(`/api/transactions?storeId=${storeId}&date=${today}`)
         .then((r) => r.json())
-        .then((data: any[]) => {
+        .then((data: DashboardTransaction[]) => {
           if (!Array.isArray(data)) return;
           setAllTodayTxns(data);
           const recent = data.slice(0, 5).map((t) => ({
             item: t.items?.length > 0 ? `${t.items[0].qty}x item` : `Transaksi`,
             time: new Date(t.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
-            qty: (t.items as any[])?.reduce((s: number, i: any) => s + i.qty, 0) ?? 0,
+            qty: t.items?.reduce((s: number, i: TransactionItem) => s + i.qty, 0) ?? 0,
             amount: t.total,
           }));
           setRecentTxns(recent);
@@ -264,24 +322,6 @@ export default function DashboardPage() {
 
     fetch(`/api/reports?storeId=${storeId}&date=${today}`)
       .then((r) => r.json())
-      .then((data: any) => {
-        if (Array.isArray(data.transactions)) {
-          const productMap: Record<string, { name: string; sold: number; revenue: number; profit: number }> = {};
-          for (const trx of data.transactions) {
-            for (const item of trx.items ?? []) {
-              const key = item.productId;
-              if (!productMap[key]) {
-                productMap[key] = { name: item.product?.name ?? item.productId, sold: 0, revenue: 0, profit: 0 };
-              }
-              productMap[key].sold += item.qty;
-              productMap[key].revenue += item.qty * item.price;
-              productMap[key].profit += item.qty * (item.price - (item.costPrice ?? item.product?.costPrice ?? 0));
-            }
-          }
-          const tops = Object.values(productMap).sort((a, b) => b.sold - a.sold).slice(0, 5);
-          setTopProducts(tops);
-        }
-      })
       .catch(console.error)
       .finally(() => setLoading(false));
 
@@ -305,16 +345,6 @@ export default function DashboardPage() {
 
   const chartData = salesLabels.map((label, i) => ({ name: label, omzet: salesData[i] }));
 
-  const CustomDot = (props: any) => {
-    const { cx, cy, index } = props;
-    if (cx == null || cy == null) return null;
-    if (index === 0) {
-      return <circle cx={cx} cy={cy} r={5} fill="#BA7517" stroke="#fff" strokeWidth={2.5} />;
-    }
-    const isUp = chartData[index].omzet >= chartData[index - 1].omzet;
-    return <circle cx={cx} cy={cy} r={5} fill={isUp ? "#16a34a" : "#dc2626"} stroke="#fff" strokeWidth={2.5} />;
-  };
-
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -322,7 +352,7 @@ export default function DashboardPage() {
           <span className="text-sm font-medium text-gray-900">Dashboard</span>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
-              {isDemoMode ? "demo@tokoku.local" : (session?.user as any)?.email ?? "Kopi Nusantara"}
+              {isDemoMode ? "demo@tokoku.local" : sessionUser.email ?? "Kopi Nusantara"}
             </span>
             <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
               {getToday()}
@@ -410,7 +440,7 @@ export default function DashboardPage() {
                     <Tooltip content={<CustomTooltip />} cursor={{ stroke: "rgba(186,117,23,0.25)", strokeWidth: 1, strokeDasharray: "4 4" }} />
                     <Area
                       type="monotone" dataKey="omzet" stroke="#BA7517" strokeWidth={2.5}
-                      fill="url(#omzetFill)" dot={<CustomDot />}
+                      fill="url(#omzetFill)" dot={(props) => renderCustomDot(props as CustomDotProps, chartData)}
                       activeDot={{ r: 7, fill: "#f59e0b", stroke: "#fff", strokeWidth: 2.5 }}
                       isAnimationActive={true} animationDuration={900} animationEasing="ease-out"
                     />

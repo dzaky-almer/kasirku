@@ -37,6 +37,33 @@ interface SlotInfo {
     reason?: string;
 }
 
+interface PaymentInfo {
+    snapToken?: string;
+}
+
+interface BookingCreateResponse {
+    booking: { id: string };
+    payment?: PaymentInfo;
+    error?: string;
+}
+
+interface SessionSnapCallbacks {
+    onSuccess: () => void | Promise<void>;
+    onPending: () => void;
+    onError: () => void;
+    onClose: () => void;
+}
+
+interface SessionSnap {
+    pay: (token: string, callbacks: SessionSnapCallbacks) => void;
+}
+
+declare global {
+    interface Window {
+        snap?: SessionSnap;
+    }
+}
+
 // ── Helpers ────────────────────────────────────────────────────
 function fmtPrice(n: number) {
     return "Rp " + n.toLocaleString("id-ID");
@@ -140,14 +167,14 @@ export default function BookingPage() {
                 const data = await res.json();
                 setStore(data);
                 setSelectedDate(today);
-            } catch (e: any) {
-                setStoreError(e.message || "Gagal memuat data toko");
+            } catch (e: unknown) {
+                setStoreError(e instanceof Error ? e.message : "Gagal memuat data toko");
             } finally {
                 setLoadingStore(false);
             }
         }
         if (slug) load();
-    }, [slug]);
+    }, [slug, today]);
 
     // Fetch slots when resource/date/pax changes (step 1)
     const fetchSlots = useCallback(async () => {
@@ -220,12 +247,11 @@ export default function BookingPage() {
                     items: selectedItems.map(i => ({ productId: i.productId, qty: i.qty })),
                 }),
             });
-            const data = await res.json();
+            const data: BookingCreateResponse = await res.json();
             if (!res.ok) throw new Error(data.error || "Gagal membuat booking");
 
             // If there's payment, redirect to Midtrans Snap
             if (data.payment?.snapToken) {
-                // @ts-ignore
                 window.snap?.pay(data.payment.snapToken, {
                     onSuccess: async () => {
                         await fetch(`/api/book/${slug}/confirm`, {
@@ -242,8 +268,8 @@ export default function BookingPage() {
             } else {
                 router.push(`/book/${slug}/success?id=${data.booking.id}`);
             }
-        } catch (e: any) {
-            setSubmitError(e.message || "Terjadi kesalahan");
+        } catch (e: unknown) {
+            setSubmitError(e instanceof Error ? e.message : "Terjadi kesalahan");
             setSubmitting(false);
         }
     }

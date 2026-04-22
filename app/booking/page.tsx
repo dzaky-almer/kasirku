@@ -123,7 +123,7 @@ function OfflineModal({
             setSaving(false);
         }
     }
-
+    
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
@@ -137,37 +137,37 @@ function OfflineModal({
                         <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1.5">Nama Pelanggan *</label>
                             <input value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))}
-                                placeholder="Budi" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900" />
+                                placeholder="Budi" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900 text-black" />
                         </div>
                         <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1.5">WhatsApp *</label>
                             <input value={form.customerPhone} onChange={e => setForm(f => ({ ...f, customerPhone: e.target.value }))}
-                                placeholder="08xxx" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900" />
+                                placeholder="08xxx" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900 text-black" />
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1.5">Jam Mulai *</label>
                             <input type="time" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
-                                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900" />
+                                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900 text-black" />
                         </div>
                         <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1.5">Jumlah Orang</label>
                             <input type="number" min={1} value={form.pax} onChange={e => setForm(f => ({ ...f, pax: parseInt(e.target.value) || 1 }))}
-                                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900" />
+                                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900 text-black" />
                         </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1.5">Aset *</label>
                         <select value={form.resourceId} onChange={e => setForm(f => ({ ...f, resourceId: e.target.value }))}
-                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900 bg-white">
+                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900 bg-white text-black">
                             {resources.map(r => <option key={r.id} value={r.id}>{r.name}{r.capacity ? ` (maks ${r.capacity})` : ""}</option>)}
                         </select>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1.5">Catatan</label>
                         <textarea value={form.customerNote} onChange={e => setForm(f => ({ ...f, customerNote: e.target.value }))}
-                            rows={2} placeholder="Opsional..." className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900 resize-none" />
+                            rows={2} placeholder="Opsional..." className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-gray-900 resize-none text-black" />
                     </div>
                 </div>
                 <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">

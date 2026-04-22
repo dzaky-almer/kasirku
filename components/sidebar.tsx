@@ -116,7 +116,7 @@ export default function Sidebar() {
   const { data: session } = useSession();
   const { isDemoMode } = useDemoMode();
 
-  if (hiddenOn.includes(pathname)) return null;
+  if (hiddenOn.includes(pathname) || pathname.startsWith("/book/")) return null;
 
   // Ambil 2 huruf pertama dari email untuk avatar
   const email = session?.user?.email ?? "";

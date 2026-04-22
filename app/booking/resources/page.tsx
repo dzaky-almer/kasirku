@@ -1,385 +1,266 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
-import { useDemoMode } from "@/lib/demo";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { bookingApi } from "@/lib/booking/api";
+import { RESOURCE_TYPE_LABEL } from "@/lib/booking/format";
+import { useStoreIdentity } from "@/lib/booking/use-store-id";
+import type { BookingResource } from "@/lib/booking/types";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  SectionCard,
+  Toggle,
+} from "@/components/booking/ui";
+import { ResourceFormModal } from "@/components/booking/admin/resource-form-modal";
 
-// ── Types ──────────────────────────────────────────────────────
-interface Resource {
-    id: string;
-    type: "BARBER" | "TABLE" | "AREA" | "ROOM";
-    name: string;
-    capacity: number | null;
-    description: string | null;
-    isActive: boolean;
-}
+const FILTERS = ["ALL", "TABLE", "AREA", "ROOM", "BARBER"] as const;
 
-const RESOURCE_TYPES = [
-    { value: "BARBER", label: "Kursi Barber", desc: "Untuk barbershop/salon" },
-    { value: "TABLE", label: "Meja", desc: "Untuk cafe/restoran" },
-    { value: "AREA", label: "Area", desc: "Zona/area umum" },
-    { value: "ROOM", label: "Ruangan", desc: "Private room / kamar" },
-];
-
-function typeInfo(type: string) {
-    return RESOURCE_TYPES.find(t => t.value === type) ?? { value: type, label: type, icon: "📍", desc: "" };
-}
-
-// ── Resource Modal ─────────────────────────────────────────────
-function ResourceModal({
-    open, initial, onClose, onSave,
-}: {
-    open: boolean;
-    initial: Partial<Resource> | null;
-    onClose: () => void;
-    onSave: (data: Partial<Resource>) => Promise<void>;
-}) {
-    const [form, setForm] = useState<Partial<Resource>>({
-        type: "BARBER", name: "", capacity: null, description: "", isActive: true,
-    });
-    const [saving, setSaving] = useState(false);
-
-    const needsCapacity = form.type === "TABLE" || form.type === "AREA" || form.type === "ROOM";
-
-    useEffect(() => {
-        if (open) {
-            setForm({
-                type: initial?.type ?? "BARBER",
-                name: initial?.name ?? "",
-                capacity: initial?.capacity ?? null,
-                description: initial?.description ?? "",
-                isActive: initial?.isActive ?? true,
-            });
-        }
-    }, [open, initial]);
-
-    if (!open) return null;
-
-    async function handleSave() {
-        if (!form.name?.trim()) return;
-        setSaving(true);
-        await onSave(form);
-        setSaving(false);
-    }
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
-                <div className="px-6 py-4 border-b border-amber-100 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-900">
-                        {initial?.id ? "Edit Aset" : "Tambah Aset Baru"}
-                    </h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-amber-700 text-xl leading-none transition-colors">×</button>
-                </div>
-
-                <div className="px-6 py-5 space-y-4">
-
-                    {/* Type selector */}
-                    <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-2">Tipe Aset *</label>
-                        <div className="grid grid-cols-2 gap-2">
-                            {RESOURCE_TYPES.map(t => (
-                                <button
-                                    key={t.value}
-                                    type="button"
-                                    onClick={() => setForm(f => ({
-                                        ...f,
-                                        type: t.value as Resource["type"],
-                                        capacity: t.value === "BARBER" ? null : f.capacity
-                                    }))}
-                                    className={`p-3 rounded-xl border text-left transition-all
-              ${form.type === t.value
-                                            ? "border-amber-700 bg-amber-50 shadow-sm"
-                                            : "border-gray-200 hover:border-amber-300 hover:bg-amber-50/40"
-                                        }`}
-                                >
-                                    <p className={`text-xs font-semibold ${form.type === t.value ? "text-amber-800" : "text-gray-800"}`}>
-                                        {t.label}
-                                    </p>
-                                    <p className={`text-[10px] ${form.type === t.value ? "text-amber-600" : "text-gray-400"}`}>
-                                        {t.desc}
-                                    </p>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Nama */}
-                    <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Nama Aset *</label>
-                        <input
-                            value={form.name ?? ""}
-                            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                            placeholder={form.type === "BARBER" ? "Kursi 1, Barber Andi..." : form.type === "TABLE" ? "Meja A, Meja VIP..." : "Area Outdoor..."}
-                            className="w-full px-3 py-2.5 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none transition-all
-        focus:border-amber-700 focus:ring-2 focus:ring-amber-100"
-                        />
-                    </div>
-
-                    {/* Capacity */}
-                    {needsCapacity && (
-                        <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1.5">Kapasitas (orang)</label>
-                            <input
-                                type="number"
-                                min={1}
-                                value={form.capacity ?? ""}
-                                onChange={e => setForm(f => ({ ...f, capacity: e.target.value ? parseInt(e.target.value) : null }))}
-                                placeholder="Contoh: 4"
-                                className="w-full px-3 py-2.5 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none transition-all
-          focus:border-amber-700 focus:ring-2 focus:ring-amber-100"
-                            />
-                            <p className="text-[10px] text-gray-400 mt-1">
-                                Meja dengan kapasitas &lt; jumlah tamu akan otomatis dikunci
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Deskripsi */}
-                    <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Deskripsi (opsional)</label>
-                        <textarea
-                            value={form.description ?? ""}
-                            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                            rows={2}
-                            placeholder="Keterangan tambahan tentang aset ini..."
-                            className="w-full px-3 py-2.5 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none resize-none transition-all
-        focus:border-amber-700 focus:ring-2 focus:ring-amber-100"
-                        />
-                    </div>
-
-                    {/* Toggle */}
-                    <div className="flex items-center gap-3">
-                        <button
-                            type="button"
-                            onClick={() => setForm(f => ({ ...f, isActive: !f.isActive }))}
-                            className={`relative w-10 h-6 rounded-full transition-colors
-            ${form.isActive ? "bg-amber-700" : "bg-gray-200"}`}
-                        >
-                            <span
-                                className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all
-            ${form.isActive ? "left-5" : "left-1"}`}
-                            />
-                        </button>
-                        <span className="text-xs text-gray-600">Aset aktif (bisa dipesan)</span>
-                    </div>
-                </div>
-
-                {/* Footer */}
-                <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 text-xs text-gray-600 hover:text-amber-700 transition-colors"
-                    >
-                        Batal
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={saving || !form.name?.trim()}
-                        className="px-5 py-2 text-xs font-semibold bg-amber-700 text-white rounded-lg
-      hover:bg-amber-800 disabled:opacity-40 transition-all shadow-sm hover:shadow"
-                    >
-                        {saving ? "Menyimpan..." : initial?.id ? "Simpan Perubahan" : "Tambah Aset"}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ── Main Page ──────────────────────────────────────────────────
 export default function BookingResourcesPage() {
-    const { data: session, status } = useSession();
-    const { demoStoreId, isDemoMode } = useDemoMode();
-    const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+  const { storeId, ready, status } = useStoreIdentity();
+  const [resources, setResources] = useState<BookingResource[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingResource, setEditingResource] = useState<BookingResource | null>(null);
+  const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("ALL");
 
-    const [resources, setResources] = useState<Resource[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    if (!storeId) return;
 
-    const [modalOpen, setModalOpen] = useState(false);
-    const [editTarget, setEditTarget] = useState<Resource | null>(null);
-    const [filterType, setFilterType] = useState<string>("ALL");
+    setLoading(true);
+    setError("");
 
-    async function fetchResources() {
-        setLoading(true); setError("");
-        try {
-            const res = await fetch(`/api/booking/resources?storeId=${storeId}`);
-            const data = await res.json();
-            setResources(data.resources ?? data ?? []);
-        } catch {
-            setError("Gagal memuat data aset.");
-        } finally {
-            setLoading(false);
-        }
+    try {
+      const result = await bookingApi.getResources(storeId);
+      setResources(result.resources);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat resource booking.");
+    } finally {
+      setLoading(false);
     }
+  }, [storeId]);
 
-    useEffect(() => {
-        if (status === "loading" || !storeId) return;
-        fetchResources();
-    }, [storeId, status]);
-
-    async function handleSave(form: Partial<Resource>) {
-        if (editTarget?.id) {
-            await fetch(`/api/booking/resources/${editTarget.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ...form, storeId }),
-            });
-        } else {
-            await fetch("/api/booking/resources", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ...form, storeId }),
-            });
-        }
-        setModalOpen(false);
-        setEditTarget(null);
-        fetchResources();
+  useEffect(() => {
+    if (status === "loading") return;
+    if (!ready) {
+      setLoading(false);
+      return;
     }
+    void load();
+  }, [load, ready, status]);
 
-    async function handleToggle(r: Resource) {
-        await fetch(`/api/booking/resources/${r.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isActive: !r.isActive, storeId }),
-        });
-        fetchResources();
+  const filteredResources = useMemo(
+    () => resources.filter((resource) => activeFilter === "ALL" || resource.type === activeFilter),
+    [activeFilter, resources]
+  );
+
+  async function handleSubmit(form: Partial<BookingResource>) {
+    if (!storeId) return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      if (editingResource) {
+        const updated = await bookingApi.updateResource(editingResource.id, { ...form, storeId });
+        setResources((current) => current.map((item) => (item.id === editingResource.id ? updated : item)));
+      } else {
+        const created = await bookingApi.createResource({ ...form, storeId });
+        setResources((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+
+      setModalOpen(false);
+      setEditingResource(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan resource.");
+    } finally {
+      setSaving(false);
     }
+  }
 
-    async function handleDelete(id: string) {
-        if (!confirm("Hapus aset ini? Semua booking yang terkait akan terpengaruh.")) return;
-        await fetch(`/api/booking/resources/${id}`, { method: "DELETE" });
-        fetchResources();
+  async function handleToggle(resource: BookingResource) {
+    try {
+      const updated = await bookingApi.updateResource(resource.id, { isActive: !resource.isActive, storeId });
+      setResources((current) => current.map((item) => (item.id === resource.id ? updated : item)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengubah status resource.");
     }
+  }
 
-    const filtered = resources.filter(r => filterType === "ALL" ? true : r.type === filterType);
-    const grouped = RESOURCE_TYPES.map(t => ({
-        ...t,
-        items: resources.filter(r => r.type === t.value),
-    })).filter(g => g.items.length > 0);
+  async function handleDelete(id: string) {
+    const confirmed = window.confirm("Hapus resource ini? Booking lama akan tetap tersimpan, tapi resource tidak bisa dipakai lagi.");
+    if (!confirmed) return;
 
+    try {
+      await bookingApi.deleteResource(id);
+      setResources((current) => current.filter((item) => item.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menghapus resource.");
+    }
+  }
+
+  if (loading) {
     return (
-        <div className="flex h-screen bg-gray-50 overflow-hidden">
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">
-                    <div className="flex items-center gap-3">
-                        <a href="/booking" className="text-gray-400 hover:text-gray-700 transition-colors text-sm">← Dashboard</a>
-                        <span className="text-gray-200">|</span>
-                        <span className="text-sm font-bold text-gray-900">Kelola Aset Booking</span>
-                    </div>
-                    <button onClick={() => { setEditTarget(null); setModalOpen(true); }}
-                        className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-amber-700 text-white rounded-lg hover:bg-amber-800 transition-colors">
-                        + Tambah Aset
-                    </button>
-                </header>
-
-                <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                    {error && <div className="px-4 py-3 bg-red-50 text-red-600 text-sm rounded-xl">{error}</div>}
-
-                    {/* Summary */}
-                    <div className="grid grid-cols-4 gap-3">
-                        {RESOURCE_TYPES.map(t => {
-                            const count = resources.filter(r => r.type === t.value).length;
-                            const active = resources.filter(r => r.type === t.value && r.isActive).length;
-                            return (
-                                <div key={t.value} className="bg-white rounded-xl p-4 border border-gray-100">
-                                    <p className="text-xl font-bold text-gray-900 mt-1">{count}</p>
-                                    <p className="text-xs text-gray-500">{t.label}</p>
-                                    <p className="text-[10px] text-gray-400">{active} aktif</p>
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {/* Filter */}
-                    <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5 w-fit">
-                        <button onClick={() => setFilterType("ALL")}
-                            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${filterType === "ALL" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                            Semua
-                        </button>
-                        {RESOURCE_TYPES.map(t => (
-                            <button key={t.value} onClick={() => setFilterType(t.value)}
-                                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${filterType === t.value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                                {t.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Resource list */}
-                    {loading ? (
-                        <div className="text-center py-16 text-gray-400 text-sm">Memuat aset...</div>
-                    ) : resources.length === 0 ? (
-                        <div className="text-center py-16">
-                            <p className="text-gray-600 font-medium text-sm">Belum ada aset</p>
-                            <p className="text-gray-400 text-xs mt-1">Tambahkan aset yang bisa dipesan pelanggan</p>
-                            <button onClick={() => setModalOpen(true)}
-                                className="mt-4 px-4 py-2 text-xs font-semibold bg-amber-700 text-white rounded-lg">
-                                + Tambah Aset Pertama
-                            </button>
-                        </div>
-                    ) : filterType !== "ALL" ? (
-                        // Flat list when filtered
-                        <div className="grid grid-cols-1 gap-2">
-                            {filtered.map(r => <ResourceRow key={r.id} r={r} onEdit={r => { setEditTarget(r); setModalOpen(true); }} onToggle={handleToggle} onDelete={handleDelete} />)}
-                        </div>
-                    ) : (
-                        // Grouped by type
-                        <div className="space-y-4">
-                            {grouped.map(g => (
-                                <div key={g.value}>
-                                    <div className="flex items-center gap-2 mb-2">
-
-                                        <h3 className="text-xs font-bold text-gray-600 tracking-wide uppercase">{g.label}</h3>
-                                        <span className="text-[10px] text-gray-400">({g.items.length})</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {g.items.map(r => <ResourceRow key={r.id} r={r} onEdit={r => { setEditTarget(r); setModalOpen(true); }} onToggle={handleToggle} onDelete={handleDelete} />)}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            <ResourceModal
-                open={modalOpen}
-                initial={editTarget}
-                onClose={() => { setModalOpen(false); setEditTarget(null); }}
-                onSave={handleSave}
-            />
-        </div>
+      <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+        <LoadingState label="Memuat resource booking..." />
+      </div>
     );
-}
+  }
 
-function ResourceRow({ r, onEdit, onToggle, onDelete }: {
-    r: Resource;
-    onEdit: (r: Resource) => void;
-    onToggle: (r: Resource) => void;
-    onDelete: (id: string) => void;
-}) {
-    const info = typeInfo(r.type);
-    return (
-        <div className={`bg-white rounded-xl border flex items-center gap-4 px-4 py-3.5 transition-all ${r.isActive ? "border-gray-100" : "border-gray-100 opacity-60"}`}>
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-gray-900">{r.name}</p>
-                    {!r.isActive && <span className="text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full">Nonaktif</span>}
-                </div>
-                <div className="flex items-center gap-3 mt-0.5">
-                    <span className="text-[10px] text-gray-400">{info.label}</span>
-                    {r.capacity && <span className="text-[10px] text-gray-400">· Kapasitas {r.capacity} orang</span>}
-                    {r.description && <span className="text-[10px] text-gray-400 truncate max-w-[200px]">· {r.description}</span>}
-                </div>
+  return (
+    <div className="flex-1 overflow-y-auto bg-slate-50">
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+        <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <Link href="/booking" className="transition hover:text-slate-900">
+                Booking
+              </Link>
+              <span>/</span>
+              <span>Resource</span>
             </div>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-                <button onClick={() => onEdit(r)} className="px-3 py-1.5 text-xs text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Edit</button>
-                <button onClick={() => onToggle(r)} className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${r.isActive ? "text-gray-500 hover:bg-gray-100" : "text-emerald-600 bg-emerald-50 hover:bg-emerald-100"}`}>
-                    {r.isActive ? "Nonaktifkan" : "Aktifkan"}
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Resource Management</h1>
+            <p className="mt-2 text-sm text-slate-500">
+              Kelola area, meja, ruangan, atau kursi yang bisa dipakai untuk reservasi customer.
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              setEditingResource(null);
+              setModalOpen(true);
+            }}
+            className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Tambah resource
+          </button>
+        </div>
+
+        {error ? <ErrorState description={error} retry={() => void load()} /> : null}
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {FILTERS.filter((filter) => filter !== "ALL").map((filter) => {
+            const total = resources.filter((resource) => resource.type === filter).length;
+            const active = resources.filter((resource) => resource.type === filter && resource.isActive).length;
+            return (
+              <div key={filter} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-sm text-slate-500">{RESOURCE_TYPE_LABEL[filter]}</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">{total}</p>
+                <p className="mt-1 text-xs text-slate-400">{active} aktif</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <SectionCard title="Daftar Resource" description="Struktur halaman dibuat seirama dengan dashboard: ringkas, fokus data, dan cepat untuk aksi edit.">
+          <div className="mb-5 flex flex-wrap gap-2">
+            {FILTERS.map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setActiveFilter(filter)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  activeFilter === filter
+                    ? "bg-slate-950 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {filter === "ALL" ? "Semua" : RESOURCE_TYPE_LABEL[filter]}
+              </button>
+            ))}
+          </div>
+
+          {filteredResources.length === 0 ? (
+            <EmptyState
+              title="Belum ada resource"
+              description="Tambahkan resource pertama untuk mulai menerima booking online."
+              action={
+                <button
+                  onClick={() => {
+                    setEditingResource(null);
+                    setModalOpen(true);
+                  }}
+                  className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Tambah resource
                 </button>
-                <button onClick={() => onDelete(r.id)} className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg transition-colors">Hapus</button>
+              }
+            />
+          ) : (
+            <div className="overflow-hidden rounded-3xl border border-slate-200">
+              <div className="hidden grid-cols-[1.4fr_0.9fr_0.9fr_0.9fr_1fr] gap-4 bg-slate-50 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 md:grid">
+                <span>Resource</span>
+                <span>Tipe</span>
+                <span>Kapasitas</span>
+                <span>Status</span>
+                <span className="text-right">Aksi</span>
+              </div>
+              <div className="divide-y divide-slate-100 bg-white">
+              {filteredResources.map((resource) => (
+                <article key={resource.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.4fr_0.9fr_0.9fr_0.9fr_1fr] md:items-center">
+                  <div className="min-w-0">
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-950">{resource.name}</h3>
+                      <p className="mt-1 truncate text-sm text-slate-500">
+                        {resource.description || "Tidak ada deskripsi tambahan."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-sm font-medium text-slate-700">
+                    {RESOURCE_TYPE_LABEL[resource.type]}
+                  </div>
+
+                  <div className="text-sm text-slate-700">
+                    {resource.capacity ? `${resource.capacity} orang` : "-"}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Toggle checked={resource.isActive} onChange={() => void handleToggle(resource)} />
+                    <span className={`text-sm font-medium ${resource.isActive ? "text-emerald-600" : "text-slate-500"}`}>
+                      {resource.isActive ? "Aktif" : "Nonaktif"}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+                    <button
+                      onClick={() => {
+                        setEditingResource(resource);
+                        setModalOpen(true);
+                      }}
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => void handleDelete(resource.id)}
+                      className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                </article>
+              ))}
+              </div>
             </div>
-        </div>
-    );
+          )}
+        </SectionCard>
+      </div>
+
+      {modalOpen ? (
+        <ResourceFormModal
+          open={modalOpen}
+          initialValue={editingResource}
+          submitting={saving}
+          onClose={() => {
+            setModalOpen(false);
+            setEditingResource(null);
+          }}
+          onSubmit={handleSubmit}
+        />
+      ) : null}
+    </div>
+  );
 }

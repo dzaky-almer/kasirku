@@ -1,9 +1,15 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolveMidtransConfig } from "@/lib/midtrans-config";
 
-function validateSignature(orderId: string, statusCode: string, grossAmount: string, signatureKey: string) {
-  const serverKey = process.env.MIDTRANS_SERVER_KEY ?? "";
+function validateSignature(
+  orderId: string,
+  statusCode: string,
+  grossAmount: string,
+  signatureKey: string,
+  serverKey: string
+) {
   const expected = createHash("sha512")
     .update(`${orderId}${statusCode}${grossAmount}${serverKey}`)
     .digest("hex");
@@ -29,17 +35,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Payload Midtrans tidak lengkap" }, { status: 400 });
   }
 
-  if (!validateSignature(orderId, statusCode, grossAmount, signatureKey)) {
-    return NextResponse.json({ error: "Signature Midtrans tidak valid" }, { status: 403 });
-  }
-
   const booking = await prisma.booking.findFirst({
     where: { paymentOrderId: orderId },
-    select: { id: true },
+    select: { id: true, storeId: true },
   });
 
   if (!booking) {
     return NextResponse.json({ success: true, skipped: true });
+  }
+
+  const { serverKey } = await resolveMidtransConfig(booking.storeId);
+  if (!serverKey || !validateSignature(orderId, statusCode, grossAmount, signatureKey, serverKey)) {
+    return NextResponse.json({ error: "Signature Midtrans tidak valid" }, { status: 403 });
   }
 
   const isPaid = ["capture", "settlement"].includes(transactionStatus) || fraudStatus === "accept";

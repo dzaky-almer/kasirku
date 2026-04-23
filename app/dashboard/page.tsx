@@ -310,7 +310,7 @@ export default function DashboardPage() {
           if (!Array.isArray(data)) return;
           setAllTodayTxns(data);
           const recent = data.slice(0, 5).map((t) => ({
-            item: t.items?.length > 0 ? `${t.items[0].qty}x item` : `Transaksi`,
+            item: t.items && t.items.length > 0 ? `${t.items[0].qty}x item` : `Transaksi`,
             time: new Date(t.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
             qty: t.items?.reduce((s: number, i: TransactionItem) => s + i.qty, 0) ?? 0,
             amount: t.total,

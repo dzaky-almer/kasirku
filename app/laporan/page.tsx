@@ -235,12 +235,12 @@ function ProdukLakuTab({ topProducts, transactions, dateFrom, dateTo }: {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between ">
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Dashboard Produk Laku</h2>
           <p className="text-xs text-gray-400 mt-0.5">Analisis performa produk lengkap periode {dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`}</p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 rounded-lg border border-amber-100">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 rounded-lg border border-amber-100 ">
           <span className="text-xs text-amber-700 font-medium">{allProducts.length} produk aktif</span>
         </div>
       </div>
@@ -254,16 +254,16 @@ function ProdukLakuTab({ topProducts, transactions, dateFrom, dateTo }: {
           {/* Top 5 vs Bottom 5 */}
           <div className="grid grid-cols-2 gap-3">
             {/* Top 5 */}
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-base">🏆</span>
+                <span className="text-base"></span>
                 <p className="text-xs font-semibold text-gray-700 tracking-wide">5 PRODUK TERLARIS</p>
               </div>
               <div className="space-y-3">
                 {top5.map((p, i) => {
                   const maxQty = top5[0].qty;
                   const pct = Math.round((p.qty / maxQty) * 100);
-                  const medals = ["🥇", "🥈", "🥉", "4.", "5."];
+                  const medals = ["1", "2", "3", "4.", "5."];
                   return (
                     <div key={p.productId}>
                       <div className="flex items-center justify-between mb-1">
@@ -286,9 +286,9 @@ function ProdukLakuTab({ topProducts, transactions, dateFrom, dateTo }: {
             </div>
 
             {/* Bottom 5 */}
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-base">📉</span>
+                
                 <p className="text-xs font-semibold text-gray-700 tracking-wide">5 PRODUK KURANG LAKU</p>
               </div>
               <div className="space-y-3">
@@ -320,7 +320,7 @@ function ProdukLakuTab({ topProducts, transactions, dateFrom, dateTo }: {
           {/* Charts row */}
           <div className="grid grid-cols-3 gap-3">
             {/* Pie chart kontribusi */}
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
               <p className="text-xs font-semibold text-gray-400 tracking-wider mb-4">KONTRIBUSI PENJUALAN</p>
               <div className="h-40">
                 <ResponsiveContainer width="100%" height="100%">
@@ -348,7 +348,7 @@ function ProdukLakuTab({ topProducts, transactions, dateFrom, dateTo }: {
             </div>
 
             {/* Revenue bar chart */}
-            <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
+            <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
               <p className="text-xs font-semibold text-gray-400 tracking-wider mb-4">OMZET PER PRODUK (TOP 8)</p>
               <div className="h-48">
                 <ResponsiveContainer width="100%" height="100%">
@@ -370,7 +370,7 @@ function ProdukLakuTab({ topProducts, transactions, dateFrom, dateTo }: {
           </div>
 
           {/* Tabel lengkap semua produk */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
             <div className="px-5 py-3 border-b border-gray-100">
               <p className="text-xs font-semibold text-gray-700">TABEL LENGKAP SEMUA PRODUK</p>
             </div>
@@ -468,7 +468,7 @@ function BarangLambatTab({ slowProducts, dateFrom, dateTo }: {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between ">
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Analisis Barang Perputaran Lambat</h2>
           <p className="text-xs text-gray-400 mt-0.5">Produk yang jarang atau belum terjual dalam periode ini</p>
@@ -476,7 +476,7 @@ function BarangLambatTab({ slowProducts, dateFrom, dateTo }: {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-4 gap-3 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
         {[
           { label: "Total produk lambat", value: slowProducts.length, sub: "produk", color: "text-gray-800" },
           { label: "Status kritis (>30 hari)", value: kritisCount, sub: "tidak terjual", color: "text-red-600" },
@@ -712,7 +712,7 @@ function AuditTab({ transactions, summary, topProducts, dateFrom, dateTo }: {
           <p className="text-xs text-gray-400 mt-0.5">Periode: {periode} · Diterbitkan {new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
         </div>
         <button onClick={exportAuditPDF}
-          className="px-3 py-1.5 text-xs font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors">
+          className="px-3 py-1.5 text-xs font-medium bg-amber-700 text-white rounded-lg hover:bg-amber-800 transition-colors">
           Export Audit PDF
         </button>
       </div>
@@ -721,7 +721,7 @@ function AuditTab({ transactions, summary, topProducts, dateFrom, dateTo }: {
       <div className="grid grid-cols-3 gap-3">
         <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
           <div className="flex items-center gap-2 mb-4">
-            <span className="w-1.5 h-4 bg-gray-800 rounded-full"></span>
+            <span className="w-1.5 h-4 bg-amber-600 rounded-full"></span>
             <p className="text-xs font-semibold text-gray-700 tracking-wide">RINGKASAN AUDIT FINANSIAL</p>
           </div>
           <div className="grid grid-cols-3 gap-4">
@@ -733,7 +733,7 @@ function AuditTab({ transactions, summary, topProducts, dateFrom, dateTo }: {
               { label: "Rata-rata Transaksi", value: fmt(summary?.avgTransaction ?? 0) },
               { label: "Potensi Anomali", value: anomalies.length > 0 ? `${anomalies.length} transaksi` : "Tidak ada", alert: anomalies.length > 0 },
             ].map(m => (
-              <div key={m.label} className={`p-3 rounded-lg ${m.accent ? "bg-gray-800 text-white" : m.alert ? "bg-red-50" : "bg-gray-50"}`}>
+              <div key={m.label} className={`p-3 rounded-lg ${m.accent ? "bg-amber-700 text-white" : m.alert ? "bg-red-50" : "bg-gray-50"}`}>
                 <p className={`text-[10px] mb-1 ${m.accent ? "text-gray-300" : m.alert ? "text-red-400" : "text-gray-400"}`}>{m.label}</p>
                 <p className={`text-sm font-semibold ${m.accent ? "text-white" : m.alert ? "text-red-700" : "text-gray-800"}`}>{m.value}</p>
               </div>
@@ -772,7 +772,7 @@ function AuditTab({ transactions, summary, topProducts, dateFrom, dateTo }: {
       </div>
 
       {/* Distribusi nilai transaksi */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5">
+      <div className="bg-white rounded-xl border border-gray-5  00 p-5">
         <p className="text-xs font-semibold text-gray-400 tracking-wider mb-4">DISTRIBUSI NILAI TRANSAKSI</p>
         <div className="space-y-3">
           {distribution.map(d => {
@@ -781,9 +781,9 @@ function AuditTab({ transactions, summary, topProducts, dateFrom, dateTo }: {
               ? ((d.count / summary.totalTransactions) * 100).toFixed(1) : "0";
             return (
               <div key={d.label} className="flex items-center gap-3">
-                <span className="text-xs text-gray-500 w-32 flex-shrink-0">{d.label}</span>
+                <span className="text-xs text-gray-600 w-32 flex-shrink-0">{d.label}</span>
                 <div className="flex-1 bg-gray-100 rounded-full h-2">
-                  <div className="bg-gray-700 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  <div className="bg-amber-600 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
                 </div>
                 <span className="text-xs font-medium text-gray-700 w-20 text-right">{d.count} trx ({totalPct}%)</span>
               </div>
@@ -828,12 +828,11 @@ function AuditTab({ transactions, summary, topProducts, dateFrom, dateTo }: {
       </div>
 
       {/* Pernyataan audit */}
-      <div className="bg-gray-800 rounded-xl p-5 text-white">
+      <div className="bg-amber-600 rounded-xl p-5 text-white text-bold">
         <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0 text-lg">📋</div>
           <div>
             <p className="text-sm font-semibold mb-1">Pernyataan Laporan Audit</p>
-            <p className="text-xs text-gray-400 leading-relaxed">
+            <p className="text-xs text-white leading-relaxed">
               Laporan ini dibuat secara otomatis berdasarkan data transaksi sistem POS untuk periode {periode}.
               Data mencakup {summary?.totalTransactions ?? 0} transaksi dengan total omzet {fmtFull(summary?.totalRevenue ?? 0)}.
               Laporan ini bersifat internal dan tidak menggantikan audit akuntan publik bersertifikat.

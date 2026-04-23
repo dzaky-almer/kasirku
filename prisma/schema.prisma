@@ -37,6 +37,8 @@ model Store {
   createdAt    DateTime      @default(now())
   user         User          @relation(fields: [userId], references: [id])
   products     Product[]
+  suppliers    Supplier[]
+  stockMovements StockMovement[]
   shifts       Shift[]
   transactions Transaction[]
   promos       Promo[]
@@ -58,13 +60,58 @@ model Product {
   category         String?
   imageUrl         String?
   label            String?
+  supplierId       String?
   bookingEnabled   Boolean           @default(false)
   bookingDurationMin Int?
   storeId          String
   store            Store             @relation(fields: [storeId], references: [id])
+  supplier         Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  stockMovements   StockMovement[]
   transactionItems TransactionItem[]
   bookingItems     BookingItem[]
   promoRules       PromoRule[]       // ← ganti dari promos Promo[] ke PromoRule[]
+}
+
+model Supplier {
+  id             String          @id @default(uuid())
+  storeId        String
+  name           String
+  phone          String?
+  email          String?
+  address        String?
+  notes          String?
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  store          Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products       Product[]
+  stockMovements StockMovement[]
+
+  @@index([storeId, isActive])
+}
+
+model StockMovement {
+  id            String    @id @default(uuid())
+  storeId       String
+  productId     String
+  supplierId    String?
+  type          String
+  reason        String
+  qtyChange     Int
+  previousStock Int
+  newStock      Int
+  note          String?
+  referenceType String?
+  referenceId   String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  store         Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier      Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  @@index([storeId, createdAt])
+  @@index([productId, createdAt])
+  @@index([supplierId])
 }
 
 model TransactionItem {

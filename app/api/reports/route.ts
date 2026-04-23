@@ -86,6 +86,69 @@ export async function GET(req: Request) {
     .sort((a, b) => b.qty - a.qty)
     .slice(0, 10);
 
+  const products = await prisma.product.findMany({
+    where: { storeId },
+    select: {
+      id: true,
+      name: true,
+      stock: true,
+      supplierId: true,
+      supplier: {
+        select: {
+          name: true,
+        },
+      },
+      transactionItems: {
+        where: {
+          transaction: {
+            status: "COMPLETED",
+          },
+        },
+        select: {
+          qty: true,
+          transaction: {
+            select: {
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: {
+          transaction: {
+            createdAt: "desc",
+          },
+        },
+      },
+    },
+  });
+
+  const slowProducts = products
+    .map((product) => {
+      const soldInPeriod = product.transactionItems.filter((item) => {
+        const createdAt = item.transaction.createdAt;
+        return createdAt >= start && createdAt <= end;
+      });
+      const lastSoldAt = product.transactionItems[0]?.transaction.createdAt ?? null;
+
+      return {
+        productId: product.id,
+        name: product.name,
+        stock: product.stock,
+        supplierId: product.supplierId,
+        supplierName: product.supplier?.name ?? null,
+        lastSoldAt: lastSoldAt ? lastSoldAt.toISOString() : null,
+        daysSinceLastSold: lastSoldAt
+          ? Math.floor((Date.now() - lastSoldAt.getTime()) / (1000 * 60 * 60 * 24))
+          : null,
+        totalSoldThisPeriod: soldInPeriod.reduce((sum, item) => sum + item.qty, 0),
+      };
+    })
+    .filter((product) => product.stock > 0)
+    .sort((a, b) => {
+      const daysA = a.daysSinceLastSold ?? 9999;
+      const daysB = b.daysSinceLastSold ?? 9999;
+      return daysB - daysA;
+    });
+
   const dailyMap: Record<string, { date: string; revenue: number; transactions: number }> = {};
   for (const trx of completedTransactions) {
     const day = formatDateInput(trx.createdAt);
@@ -117,6 +180,7 @@ export async function GET(req: Request) {
     dateTo: dateTo ?? date ?? formatDateInput(end),
     summary: { totalRevenue, totalTransactions, totalItems, avgTransaction },
     topProducts,
+    slowProducts,
     dailyChart,
     hourChart,
     transactions,

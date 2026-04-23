@@ -19,12 +19,74 @@ interface Product {
   imageUrl?: string;
   storeId: string;
   label?: string | null;
+  supplierId?: string | null;
+  supplier?: { id: string; name: string } | null;
   soldLast7Days?: number; // dari join API (opsional)
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+}
+
+interface StockMovement {
+  id: string;
+  type: "IN" | "OUT" | "ADJUSTMENT";
+  reason: string;
+  qtyChange: number;
+  previousStock: number;
+  newStock: number;
+  note?: string | null;
+  createdAt: string;
+  supplier?: { id: string; name: string } | null;
+}
+
+interface BulkOpnameRow {
+  productId: string;
+  name: string;
+  unit: string;
+  currentStock: number;
+  targetStock: string;
+}
+
+interface SessionUser {
+  storeId?: string;
+}
+
+interface BarcodeDetectionResult {
+  rawValue?: string;
+}
+
+interface BarcodeDetectorInstance {
+  detect: (source: HTMLVideoElement) => Promise<BarcodeDetectionResult[]>;
+}
+
+interface BarcodeDetectorConstructor {
+  new (options?: { formats?: string[] }): BarcodeDetectorInstance;
+  getSupportedFormats: () => Promise<string[]>;
+}
+
+type ScannerHandle = ReturnType<typeof setInterval> | { _zxing: { reset: () => void } };
+
+declare global {
+  interface Window {
+    BarcodeDetector?: BarcodeDetectorConstructor;
+  }
 }
 
 const emptyForm = {
   name: "", barcode: "", sku: "", price: "", costPrice: "",
-  stock: "", minStock: "5", unit: "pcs", category: "", imageUrl: "", label: "",
+  stock: "", minStock: "5", unit: "pcs", category: "", imageUrl: "", label: "", supplierId: "",
+};
+
+const emptySupplierForm = {
+  name: "",
+  phone: "",
+  email: "",
+  address: "",
+  notes: "",
 };
 
 function fmt(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
@@ -68,25 +130,48 @@ function markupBadge(pct: number | null): { label: string; cls: string } {
   return { label: "Bagus", cls: "bg-emerald-50 text-emerald-700" };
 }
 
+function isZxingHandle(handle: ScannerHandle | null): handle is { _zxing: { reset: () => void } } {
+  return Boolean(handle && typeof handle === "object" && "_zxing" in handle);
+}
+
 export default function ProdukPage() {
   const { data: session } = useSession();
   const { demoStoreId, isDemoMode } = useDemoMode();
-  const storeId = isDemoMode ? demoStoreId : (session?.user as any)?.storeId ?? "";
+  const sessionUser = (session?.user ?? {}) as SessionUser;
+  const storeId = isDemoMode ? demoStoreId : sessionUser.storeId ?? "";
 
   const [products, setProducts]         = useState<Product[]>([]);
+  const [suppliers, setSuppliers]       = useState<Supplier[]>([]);
   const [soldMap, setSoldMap]           = useState<Record<string, number>>({}); // productId → sold 7 hari
   const [search, setSearch]             = useState("");
   const [catFilter, setCatFilter]       = useState("all");
+  const [supplierFilter, setSupplierFilter] = useState("all");
   const [stockFilter, setStockFilter]   = useState<StockFilter>("all");
   const [sortKey, setSortKey]           = useState<SortKey>("name");
 
   const [showModal, setShowModal]         = useState(false);
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [showBulkOpnameModal, setShowBulkOpnameModal] = useState(false);
   const [editTarget, setEditTarget]       = useState<Product | null>(null);
   const [form, setForm]                   = useState(emptyForm);
+  const [supplierForm, setSupplierForm]   = useState(emptySupplierForm);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [toast, setToast]                 = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const [loading, setLoading]             = useState(false);
   const [uploading, setUploading]         = useState(false);
+  const [inventoryProduct, setInventoryProduct] = useState<Product | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [movementHistory, setMovementHistory] = useState<StockMovement[]>([]);
+  const [bulkOpnameRows, setBulkOpnameRows] = useState<BulkOpnameRow[]>([]);
+  const [bulkOpnameNote, setBulkOpnameNote] = useState("Opname massal");
+  const [movementForm, setMovementForm] = useState({
+    type: "IN" as "IN" | "OUT" | "ADJUSTMENT",
+    quantity: "",
+    targetStock: "",
+    reason: "RESTOCK",
+    note: "",
+    supplierId: "",
+  });
 
   // Inline edit
   const [inlineEdit, setInlineEdit] = useState<{ id: string; field: "stock" | "price" } | null>(null);
@@ -95,7 +180,6 @@ export default function ProdukPage() {
 
   // Bulk
   const [selected, setSelected]     = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState("");
   const [bulkCat, setBulkCat]       = useState("");
   const [bulkPrice, setBulkPrice]   = useState("");
 
@@ -105,7 +189,7 @@ export default function ProdukPage() {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const videoRef    = useRef<HTMLVideoElement>(null);
   const streamRef   = useRef<MediaStream | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const intervalRef = useRef<ScannerHandle | null>(null);
 
   // Categories
   const [customCategories, setCustomCategories] = useState<string[]>(["Kopi","Non-Kopi","Makanan","Minuman"]);
@@ -123,6 +207,14 @@ export default function ProdukPage() {
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setProducts(d); })
       .catch(() => showToast("Gagal memuat produk", "err"));
+  }, [storeId]);
+
+  useEffect(() => {
+    if (!storeId) { setSuppliers([]); return; }
+    fetch(`/api/suppliers?storeId=${storeId}`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setSuppliers(d); })
+      .catch(() => showToast("Gagal memuat supplier", "err"));
   }, [storeId]);
 
   // ── Fetch data penjualan 7 hari untuk deadstock ───────────────
@@ -155,10 +247,12 @@ export default function ProdukPage() {
 
   // Reset state saat storeId berubah
   useEffect(() => {
-    setSearch(""); setCatFilter("all"); setStockFilter("all"); setSortKey("name");
-    setInlineEdit(null); setInlineVal(""); setBulkAction(""); setBulkCat("");
+    setSearch(""); setCatFilter("all"); setSupplierFilter("all"); setStockFilter("all"); setSortKey("name");
+    setInlineEdit(null); setInlineVal(""); setBulkCat("");
     setBulkPrice(""); setDeleteConfirm(null); setShowModal(false);
     setEditTarget(null); setForm(emptyForm); setShowDeadstockPanel(false);
+    setShowSupplierModal(false); setSupplierForm(emptySupplierForm);
+    setInventoryProduct(null); setMovementHistory([]);
   }, [storeId]);
 
   useEffect(() => {
@@ -171,9 +265,9 @@ export default function ProdukPage() {
 
   useEffect(() => {
     return () => {
-      const iv = intervalRef.current as any;
-      if (iv?._zxing) { try { iv._zxing.reset(); } catch {} }
-      else if (intervalRef.current) clearInterval(intervalRef.current);
+      const iv = intervalRef.current;
+      if (isZxingHandle(iv)) { try { iv._zxing.reset(); } catch {} }
+      else if (typeof iv === "number") clearInterval(iv); 
       intervalRef.current = null;
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
@@ -195,6 +289,7 @@ export default function ProdukPage() {
       const q = search.toLowerCase();
       const matchSearch = p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.barcode?.includes(q);
       const matchCat    = catFilter === "all" || p.category === catFilter;
+      const matchSupplier = supplierFilter === "all" || p.supplierId === supplierFilter;
       const sold7       = soldMap[p.id] ?? 0;
       const matchStock  =
         stockFilter === "all"       ? true :
@@ -202,7 +297,7 @@ export default function ProdukPage() {
         stockFilter === "low"       ? p.stock > 0 && p.stock <= p.minStock :
         stockFilter === "deadstock" ? sold7 === 0 && p.stock > 0 :
                                       p.stock > p.minStock;
-      return matchSearch && matchCat && matchStock;
+      return matchSearch && matchCat && matchSupplier && matchStock;
     })
     .sort((a, b) => {
       if (sortKey === "name")         return a.name.localeCompare(b.name);
@@ -256,7 +351,12 @@ export default function ProdukPage() {
 
   // ── Bulk actions ──────────────────────────────────────────────
   function toggleSelect(id: string) {
-    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
   function toggleAll() {
     setSelected(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(p => p.id)));
@@ -294,9 +394,9 @@ export default function ProdukPage() {
 
   // ── Barcode ───────────────────────────────────────────────────
   function stopScan() {
-    const iv = intervalRef.current as any;
-    if (iv?._zxing) { try { iv._zxing.reset(); } catch {} }
-    else if (intervalRef.current) clearInterval(intervalRef.current);
+    const iv = intervalRef.current;
+    if (isZxingHandle(iv)) { try { iv._zxing.reset(); } catch {} }
+    else if (typeof iv === "number") clearInterval(iv);
     intervalRef.current = null;
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
@@ -324,7 +424,7 @@ export default function ProdukPage() {
       });
     }
 
-    const BD = (window as any).BarcodeDetector;
+    const BD = window.BarcodeDetector;
     if (BD) {
       const supported = await BD.getSupportedFormats();
       const detector = new BD({ formats: supported });
@@ -332,21 +432,21 @@ export default function ProdukPage() {
         if (!videoRef.current || videoRef.current.readyState < 2) return;
         try {
           const codes = await detector.detect(videoRef.current);
-          if (codes.length > 0) { stopScan(); handleBarcodeResult(codes[0].rawValue); }
+          if (codes.length > 0 && codes[0].rawValue) { stopScan(); handleBarcodeResult(codes[0].rawValue); }
         } catch {}
       }, 200);
     } else {
       try {
         const { BrowserMultiFormatReader } = await import("@zxing/library");
         const codeReader = new BrowserMultiFormatReader();
-        intervalRef.current = { _zxing: codeReader } as any;
+        intervalRef.current = { _zxing: codeReader };
         const result = await codeReader.decodeFromVideoElement(videoRef.current!);
         if (result) { stopScan(); handleBarcodeResult(result.getText()); }
       } catch { showToast("Browser tidak support scan barcode", "err"); stopScan(); }
     }
   }
 
-  async function handleDeviceChange(deviceId: string) {
+    async function handleDeviceChange(deviceId: string) {
     setSelectedDeviceId(deviceId);
     if (scanMode) { stopScan(); setTimeout(() => startScan(), 300); }
   }
@@ -369,7 +469,7 @@ export default function ProdukPage() {
       price: product.price.toString(), costPrice: product.costPrice?.toString() ?? "",
       stock: product.stock.toString(), minStock: product.minStock.toString(),
       unit: product.unit, category: product.category ?? "",
-      imageUrl: product.imageUrl ?? "", label: product.label ?? "",
+      imageUrl: product.imageUrl ?? "", label: product.label ?? "", supplierId: product.supplierId ?? "",
     });
     if (product.category && !customCategories.includes(product.category))
       setCustomCategories(prev => [...prev, product.category!]);
@@ -398,6 +498,179 @@ export default function ProdukPage() {
     finally { setUploading(false); }
   }
 
+  async function handleSaveSupplier() {
+    if (!storeId || !supplierForm.name.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/suppliers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storeId,
+          ...supplierForm,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      const supplier = await res.json();
+      setSuppliers(prev => [...prev, supplier].sort((a, b) => a.name.localeCompare(b.name)));
+      setForm(prev => ({ ...prev, supplierId: supplier.id }));
+      setSupplierForm(emptySupplierForm);
+      setShowSupplierModal(false);
+      showToast("Supplier ditambahkan");
+    } catch {
+      showToast("Gagal menyimpan supplier", "err");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openInventoryModal(product: Product) {
+    setInventoryProduct(product);
+    setMovementForm({
+      type: "IN",
+      quantity: "",
+      targetStock: product.stock.toString(),
+      reason: "RESTOCK",
+      note: "",
+      supplierId: product.supplierId ?? "",
+    });
+    setInventoryLoading(true);
+    try {
+      const res = await fetch(`/api/stock-movements?storeId=${storeId}&productId=${product.id}&limit=12`);
+      const data = await res.json();
+      setMovementHistory(Array.isArray(data) ? data : []);
+    } catch {
+      setMovementHistory([]);
+      showToast("Gagal memuat riwayat stok", "err");
+    } finally {
+      setInventoryLoading(false);
+    }
+  }
+
+  async function handleSubmitMovement() {
+    if (!inventoryProduct || !storeId || !movementForm.reason.trim()) return;
+    setInventoryLoading(true);
+    try {
+      const payload =
+        movementForm.type === "ADJUSTMENT"
+          ? {
+              storeId,
+              productId: inventoryProduct.id,
+              type: movementForm.type,
+              targetStock: parseInt(movementForm.targetStock),
+              reason: movementForm.reason.trim(),
+              note: movementForm.note.trim() || null,
+              supplierId: movementForm.supplierId || null,
+            }
+          : {
+              storeId,
+              productId: inventoryProduct.id,
+              type: movementForm.type,
+              quantity: parseInt(movementForm.quantity),
+              reason: movementForm.reason.trim(),
+              note: movementForm.note.trim() || null,
+              supplierId: movementForm.supplierId || null,
+            };
+
+      const res = await fetch("/api/stock-movements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Gagal menyimpan pergerakan stok");
+
+      const nextStock = data?.newStock ?? inventoryProduct.stock;
+      setProducts(prev => prev.map(p => p.id === inventoryProduct.id ? { ...p, stock: nextStock } : p));
+      const updatedProduct = { ...inventoryProduct, stock: nextStock };
+      setInventoryProduct(updatedProduct);
+      setMovementHistory(prev => [data, ...prev].slice(0, 12));
+      setMovementForm(prev => ({
+        ...prev,
+        quantity: "",
+        targetStock: nextStock.toString(),
+        note: "",
+      }));
+      showToast("Pergerakan stok disimpan");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Gagal menyimpan pergerakan stok", "err");
+    } finally {
+      setInventoryLoading(false);
+    }
+  }
+
+  function openBulkOpnameModal() {
+    const rows = products
+      .filter(product => selected.has(product.id))
+      .map(product => ({
+        productId: product.id,
+        name: product.name,
+        unit: product.unit,
+        currentStock: product.stock,
+        targetStock: product.stock.toString(),
+      }));
+
+    if (rows.length === 0) {
+      showToast("Pilih produk dulu untuk opname", "err");
+      return;
+    }
+
+    setBulkOpnameRows(rows);
+    setBulkOpnameNote("Opname massal");
+    setShowBulkOpnameModal(true);
+  }
+
+  async function handleSubmitBulkOpname() {
+    if (!storeId || bulkOpnameRows.length === 0) return;
+
+    setInventoryLoading(true);
+    try {
+      const updates = await Promise.all(
+        bulkOpnameRows.map(async (row) => {
+          const targetStock = parseInt(row.targetStock);
+          if (Number.isNaN(targetStock) || targetStock < 0) {
+            throw new Error(`Stok fisik untuk ${row.name} belum valid`);
+          }
+
+          const res = await fetch("/api/stock-movements", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              storeId,
+              productId: row.productId,
+              type: "ADJUSTMENT",
+              targetStock,
+              reason: "STOCK_OPNAME",
+              note: bulkOpnameNote.trim() || "Opname massal",
+            }),
+          });
+
+          const data = await res.json().catch(() => null);
+          if (!res.ok) throw new Error(data?.error || `Gagal opname ${row.name}`);
+          return { productId: row.productId, newStock: data?.newStock ?? targetStock };
+        })
+      );
+
+      const updateMap = new Map(updates.map((item) => [item.productId, item.newStock]));
+      setProducts(prev =>
+        prev.map(product =>
+          updateMap.has(product.id)
+            ? { ...product, stock: updateMap.get(product.id) ?? product.stock }
+            : product
+        )
+      );
+      setSelected(new Set());
+      setShowBulkOpnameModal(false);
+      setBulkOpnameRows([]);
+      showToast("Stok opname massal berhasil disimpan");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Gagal menyimpan stok opname", "err");
+    } finally {
+      setInventoryLoading(false);
+    }
+  }
+
   async function handleSave() {
     if (!form.name.trim() || !form.price || !form.stock) return;
     setLoading(true);
@@ -407,7 +680,7 @@ export default function ProdukPage() {
       costPrice: form.costPrice ? parseInt(form.costPrice) : null,
       stock: parseInt(form.stock), minStock: parseInt(form.minStock) || 5,
       unit: form.unit || "pcs", category: form.category.trim() || null,
-      imageUrl: form.imageUrl || null, label: form.label || null, storeId,
+      imageUrl: form.imageUrl || null, label: form.label || null, supplierId: form.supplierId || null, storeId,
     };
     try {
       if (editTarget) {
@@ -476,6 +749,12 @@ export default function ProdukPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSupplierModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-700 transition-colors"
+          >
+            + Supplier
+          </button>
           <button
             onClick={scanMode ? stopScan : startScan}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
@@ -573,6 +852,13 @@ export default function ProdukPage() {
           {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
+        <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)}
+          className="px-3 py-1.5 text-xs text-black border border-gray-200 rounded-lg outline-none focus:border-amber-300 bg-white"
+        >
+          <option value="all">Semua Supplier</option>
+          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+
         {/* Stock filter — termasuk deadstock */}
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
           {([
@@ -618,6 +904,9 @@ export default function ProdukPage() {
             <input type="number" placeholder="Harga baru..." value={bulkPrice} onChange={e => setBulkPrice(e.target.value)} className="px-2 py-1.5 text-xs text-black border border-amber-200 rounded-lg w-32 outline-none" />
             <button onClick={runBulkPrice} disabled={!bulkPrice} className="px-3 py-1.5 text-xs bg-amber-700 text-white rounded-lg hover:bg-amber-800 disabled:opacity-40 transition-colors">Update Harga</button>
           </div>
+          <button onClick={openBulkOpnameModal} className="px-3 py-1.5 text-xs bg-white text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors">
+            Stok Opname
+          </button>
           <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-gray-500 hover:text-gray-700">Batal pilih</button>
         </div>
       )}
@@ -768,6 +1057,11 @@ export default function ProdukPage() {
                     {/* Actions */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => openInventoryModal(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-700 hover:bg-blue-50 transition-colors" title="Kelola stok">
+                          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
+                            <path d="M3 5.5h10M3 8h10M3 10.5h6" stroke="currentColor" strokeLinecap="round"/>
+                          </svg>
+                        </button>
                         <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-amber-700 hover:bg-amber-50 transition-colors">
                           <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
                             <path d="M11 2l3 3-8 8H3v-3L11 2z" stroke="currentColor" strokeLinejoin="round"/>
@@ -936,6 +1230,26 @@ export default function ProdukPage() {
                       )}
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Supplier</label>
+                      <div className="flex gap-1">
+                        <select value={form.supplierId} onChange={e => setForm(f => ({ ...f, supplierId: e.target.value }))}
+                          className="flex-1 px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 bg-white"
+                        >
+                          <option value="">Tanpa supplier</option>
+                          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                        <button type="button" onClick={() => setShowSupplierModal(true)}
+                          className="px-2 text-xs text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-50"
+                        >+</button>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-gray-400 flex items-end">
+                      Supplier akan membantu restock dan riwayat stok masuk.
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -954,6 +1268,195 @@ export default function ProdukPage() {
       )}
 
       {/* ── MODAL HAPUS ── */}
+      {showSupplierModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowSupplierModal(false)}>
+          <div className="bg-white rounded-2xl p-6 w-[420px]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-sm font-medium text-gray-900">Tambah Supplier</h2>
+              <button onClick={() => setShowSupplierModal(false)} className="text-gray-400 hover:text-gray-600">×</button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Nama Supplier</label>
+                <input value={supplierForm.name} onChange={e => setSupplierForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <input value={supplierForm.phone} onChange={e => setSupplierForm(f => ({ ...f, phone: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400" placeholder="Telepon"
+                />
+                <input value={supplierForm.email} onChange={e => setSupplierForm(f => ({ ...f, email: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400" placeholder="Email"
+                />
+              </div>
+              <input value={supplierForm.address} onChange={e => setSupplierForm(f => ({ ...f, address: e.target.value }))}
+                className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400" placeholder="Alamat"
+              />
+              <textarea value={supplierForm.notes} onChange={e => setSupplierForm(f => ({ ...f, notes: e.target.value }))}
+                rows={3} className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 resize-none" placeholder="Catatan"
+              />
+            </div>
+            <div className="flex gap-2 mt-6">
+              <button onClick={() => setShowSupplierModal(false)} className="flex-1 py-2 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50">Batal</button>
+              <button onClick={handleSaveSupplier} disabled={!supplierForm.name.trim() || loading} className="flex-1 py-2 text-sm text-white bg-amber-700 rounded-xl hover:bg-amber-800 disabled:opacity-40">
+                {loading ? "Menyimpan..." : "Simpan Supplier"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkOpnameModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowBulkOpnameModal(false)}>
+          <div className="bg-white rounded-2xl p-6 w-[720px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-sm font-medium text-gray-900">Stok Opname Massal</h2>
+                <p className="text-xs text-gray-400 mt-1">Sesuaikan stok fisik untuk beberapa produk sekaligus.</p>
+              </div>
+              <button onClick={() => setShowBulkOpnameModal(false)} className="text-gray-400 hover:text-gray-600">Ã—</button>
+            </div>
+
+            <div className="mb-4">
+              <label className="text-xs text-gray-500 mb-1 block">Catatan opname</label>
+              <input
+                value={bulkOpnameNote}
+                onChange={e => setBulkOpnameNote(e.target.value)}
+                className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400"
+                placeholder="Mis. Opname gudang pagi"
+              />
+            </div>
+
+            <div className="border border-gray-100 rounded-xl overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    {["PRODUK", "STOK SISTEM", "STOK FISIK", "SELISIH"].map(head => (
+                      <th key={head} className="px-4 py-3 text-left text-[10px] font-medium text-gray-400 tracking-wider">{head}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {bulkOpnameRows.map((row) => {
+                    const targetStock = parseInt(row.targetStock);
+                    const diff = Number.isNaN(targetStock) ? 0 : targetStock - row.currentStock;
+                    return (
+                      <tr key={row.productId}>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-medium text-gray-800">{row.name}</p>
+                          <p className="text-[10px] text-gray-400">{row.unit}</p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{row.currentStock.toLocaleString("id-ID")} {row.unit}</td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            value={row.targetStock}
+                            onChange={e => setBulkOpnameRows(prev => prev.map(item => item.productId === row.productId ? { ...item, targetStock: e.target.value } : item))}
+                            className="w-28 px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400"
+                          />
+                        </td>
+                        <td className={`px-4 py-3 text-sm font-medium ${diff > 0 ? "text-emerald-600" : diff < 0 ? "text-red-500" : "text-gray-500"}`}>
+                          {diff > 0 ? "+" : ""}{diff}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <button onClick={() => setShowBulkOpnameModal(false)} className="flex-1 py-2 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50">
+                Batal
+              </button>
+              <button onClick={handleSubmitBulkOpname} disabled={inventoryLoading || bulkOpnameRows.length === 0} className="flex-1 py-2 text-sm text-white bg-amber-700 rounded-xl hover:bg-amber-800 disabled:opacity-40">
+                {inventoryLoading ? "Menyimpan..." : "Simpan Opname"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {inventoryProduct && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setInventoryProduct(null)}>
+          <div className="bg-white rounded-2xl p-6 w-[640px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-sm font-medium text-gray-900">Manajemen Stok</h2>
+                <p className="text-xs text-gray-400 mt-1">{inventoryProduct.name} · stok saat ini {inventoryProduct.stock} {inventoryProduct.unit}</p>
+              </div>
+              <button onClick={() => setInventoryProduct(null)} className="text-gray-400 hover:text-gray-600">×</button>
+            </div>
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  {(["IN", "OUT", "ADJUSTMENT"] as const).map(type => (
+                    <button
+                      key={type}
+                      onClick={() => setMovementForm(prev => ({ ...prev, type, reason: type === "IN" ? "RESTOCK" : type === "OUT" ? "DAMAGED" : "STOCK_OPNAME", targetStock: type === "ADJUSTMENT" ? inventoryProduct.stock.toString() : prev.targetStock }))}
+                      className={`py-2 text-xs rounded-lg border ${movementForm.type === type ? "bg-amber-700 text-white border-amber-700" : "border-gray-200 text-gray-600 hover:border-amber-300"}`}
+                    >
+                      {type === "IN" ? "Stok Masuk" : type === "OUT" ? "Stok Keluar" : "Adjustment"}
+                    </button>
+                  ))}
+                </div>
+                {movementForm.type === "ADJUSTMENT" ? (
+                  <input type="number" min="0" value={movementForm.targetStock} onChange={e => setMovementForm(prev => ({ ...prev, targetStock: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400" placeholder="Stok akhir"
+                  />
+                ) : (
+                  <input type="number" min="1" value={movementForm.quantity} onChange={e => setMovementForm(prev => ({ ...prev, quantity: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400" placeholder="Jumlah"
+                  />
+                )}
+                <input value={movementForm.reason} onChange={e => setMovementForm(prev => ({ ...prev, reason: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400" placeholder="Alasan"
+                />
+                <select value={movementForm.supplierId} onChange={e => setMovementForm(prev => ({ ...prev, supplierId: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 bg-white"
+                >
+                  <option value="">Tanpa supplier</option>
+                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <textarea value={movementForm.note} onChange={e => setMovementForm(prev => ({ ...prev, note: e.target.value }))}
+                  rows={3} className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 resize-none" placeholder="Catatan"
+                />
+                <button onClick={handleSubmitMovement} disabled={inventoryLoading} className="w-full py-2.5 text-sm text-white bg-amber-700 rounded-xl hover:bg-amber-800 disabled:opacity-40">
+                  {inventoryLoading ? "Memproses..." : "Simpan Pergerakan Stok"}
+                </button>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-medium text-gray-500">Riwayat Stok Terbaru</p>
+                  <span className="text-[10px] text-gray-400">{movementHistory.length} catatan</span>
+                </div>
+                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                  {movementHistory.length === 0 ? (
+                    <div className="text-xs text-gray-400 bg-gray-50 rounded-xl p-4">Belum ada riwayat stok untuk produk ini.</div>
+                  ) : movementHistory.map(item => (
+                    <div key={item.id} className="border border-gray-100 rounded-xl p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-medium text-gray-800">{item.reason}</p>
+                          <p className="text-[10px] text-gray-400">{new Date(item.createdAt).toLocaleString("id-ID")}{item.supplier?.name ? ` · ${item.supplier.name}` : ""}</p>
+                        </div>
+                        <span className={`text-xs font-semibold ${item.qtyChange >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                          {item.qtyChange >= 0 ? "+" : ""}{item.qtyChange}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-1">Stok {item.previousStock} → {item.newStock}</p>
+                      {item.note && <p className="text-[10px] text-gray-400 mt-1">{item.note}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setDeleteConfirm(null)}>
           <div className="bg-white rounded-2xl p-6 w-80 text-center" onClick={e => e.stopPropagation()}>

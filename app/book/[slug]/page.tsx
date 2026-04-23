@@ -1,644 +1,564 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Script from "next/script";
 import { useParams, useRouter } from "next/navigation";
+import { bookingApi } from "@/lib/booking/api";
+import { BookingFlowProvider, useBookingFlow } from "@/lib/booking/flow-context";
+import {
+  formatCurrency,
+  formatDateLabel,
+  formatTimeLabel,
+  normalizePhone,
+  RESOURCE_TYPE_LABEL,
+  shiftDate,
+  todayInJakarta,
+} from "@/lib/booking/format";
+import type { AvailabilitySlot } from "@/lib/booking/types";
+import { EmptyState, ErrorState, LoadingState, SectionCard } from "@/components/booking/ui";
+import { BookingStepper } from "@/components/booking/public/booking-stepper";
 
-// ── Types ──────────────────────────────────────────────────────
-interface BookingProduct {
-    id: string;
-    name: string;
-    price: number;
-    category: string | null;
-    bookingDurationMin: number | null;
-}
-interface BookingResource {
-    id: string;
-    type: "BARBER" | "TABLE" | "AREA" | "ROOM";
-    name: string;
-    capacity: number | null;
-    description: string | null;
-    products: BookingProduct[];
-}
-interface StoreInfo {
-    id: string;
-    name: string;
-    slug: string;
-    type: string;
-    address: string | null;
-    waNumber: string | null;
-    bookingOpenTime: string;
-    bookingCloseTime: string;
-    bookingSlotMinutes: number;
-    bookingResources: BookingResource[];
-}
-interface SlotInfo {
-    time: string;
-    available: boolean;
-    reason?: string;
-}
-
-interface PaymentInfo {
-    snapToken?: string;
-}
-
-interface BookingCreateResponse {
-    booking: { id: string };
-    payment?: PaymentInfo;
-    error?: string;
-}
-
-interface SessionSnapCallbacks {
-    onSuccess: () => void | Promise<void>;
-    onPending: () => void;
-    onError: () => void;
-    onClose: () => void;
-}
-
-interface SessionSnap {
-    pay: (token: string, callbacks: SessionSnapCallbacks) => void;
-}
+type SnapCallbacks = {
+  onSuccess: () => void | Promise<void>;
+  onPending: () => void;
+  onError: () => void;
+  onClose: () => void;
+};
 
 declare global {
-    interface Window {
-        snap?: SessionSnap;
+  interface Window {
+    snap?: {
+      pay: (token: string, callbacks: SnapCallbacks) => void;
+    };
+  }
+}
+
+const STEPS = ["Tanggal", "Resource", "Layanan", "Data", "Bayar"];
+
+export default function PublicBookingPage() {
+  return (
+    <BookingFlowProvider>
+      <BookingPageContent />
+    </BookingFlowProvider>
+  );
+}
+
+function BookingPageContent() {
+  const { slug } = useParams<{ slug: string }>();
+  const router = useRouter();
+  const flow = useBookingFlow();
+  const [step, setStep] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [midtrans, setMidtrans] = useState<{ clientKey: string; isProduction: boolean } | null>(null);
+  const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
+
+  const loadStore = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const store = await bookingApi.getPublicStore(slug);
+      flow.setStore(store);
+      if (!flow.date) {
+        flow.setDate(todayInJakarta());
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat halaman booking.");
+    } finally {
+      setLoading(false);
     }
-}
+  }, [flow, slug]);
 
-// ── Helpers ────────────────────────────────────────────────────
-function fmtPrice(n: number) {
-    return "Rp " + n.toLocaleString("id-ID");
-}
-function resourceIcon(type: string) {
-    switch (type) {
-        case "BARBER": return "💈";
-        case "TABLE": return "🍽️";
-        case "AREA": return "🏠";
-        case "ROOM": return "🚪";
-        default: return "📍";
-    }
-}
-function resourceLabel(type: string) {
-    switch (type) {
-        case "BARBER": return "Kursi";
-        case "TABLE": return "Meja";
-        case "AREA": return "Area";
-        case "ROOM": return "Ruangan";
-        default: return "Aset";
-    }
-}
-function storeTypeIcon(type: string) {
-    const t = type?.toLowerCase();
-    if (t?.includes("barber")) return "💈";
-    if (t?.includes("cafe") || t?.includes("kafe") || t?.includes("resto")) return "☕";
-    if (t?.includes("salon")) return "💇";
-    if (t?.includes("gym") || t?.includes("fitness")) return "🏋️";
-    if (t?.includes("hotel") || t?.includes("villa")) return "🏨";
-    return "🏪";
-}
+  useEffect(() => {
+    if (!slug) return;
+    void loadStore();
+  }, [loadStore, slug]);
 
-// ── Step indicator ─────────────────────────────────────────────
-function StepBar({ step }: { step: number }) {
-    const steps = ["Tanggal & Aset", "Pilih Layanan", "Data Diri", "Konfirmasi"];
-    return (
-        <div className="flex items-center gap-0 mb-8">
-            {steps.map((s, i) => (
-                <div key={i} className="flex items-center flex-1 last:flex-none">
-                    <div className="flex flex-col items-center">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${i < step ? "bg-emerald-500 text-white" :
-                                i === step ? "bg-gray-900 text-white ring-4 ring-gray-900/20" :
-                                    "bg-gray-100 text-gray-400"
-                            }`}>
-                            {i < step ? "✓" : i + 1}
-                        </div>
-                        <span className={`text-[10px] mt-1 font-medium whitespace-nowrap ${i === step ? "text-gray-900" : "text-gray-400"}`}>{s}</span>
-                    </div>
-                    {i < steps.length - 1 && (
-                        <div className={`flex-1 h-0.5 mx-2 mb-4 transition-all duration-500 ${i < step ? "bg-emerald-500" : "bg-gray-100"}`} />
-                    )}
-                </div>
-            ))}
-        </div>
-    );
-}
+  useEffect(() => {
+    if (!flow.store?.id) return;
+    bookingApi
+      .getMidtransConfig(flow.store.id)
+      .then((result) => setMidtrans(result))
+      .catch(() => null);
+  }, [flow.store?.id]);
 
-// ── Main Page ──────────────────────────────────────────────────
-export default function BookingPage() {
-    const { slug } = useParams<{ slug: string }>();
-    const router = useRouter();
+  useEffect(() => {
+    if (!flow.store || !flow.resourceId || !flow.date) return;
 
-    // Store data
-    const [store, setStore] = useState<StoreInfo | null>(null);
-    const [loadingStore, setLoadingStore] = useState(true);
-    const [storeError, setStoreError] = useState("");
+    let active = true;
 
-    // Step state
-    const [step, setStep] = useState(0);
+    async function loadAvailability() {
+      setLoadingSlots(true);
+      setError("");
 
-    // Step 0: date + resource
-    const [selectedDate, setSelectedDate] = useState("");
-    const [selectedResource, setSelectedResource] = useState<BookingResource | null>(null);
-    const [pax, setPax] = useState(1);
-
-    // Step 1: time + products
-    const [slots, setSlots] = useState<SlotInfo[]>([]);
-    const [loadingSlots, setLoadingSlots] = useState(false);
-    const [selectedTime, setSelectedTime] = useState("");
-    const [selectedItems, setSelectedItems] = useState<{ productId: string; qty: number; product: BookingProduct }[]>([]);
-
-    // Step 2: customer data
-    const [customerName, setCustomerName] = useState("");
-    const [customerPhone, setCustomerPhone] = useState("");
-    const [customerNote, setCustomerNote] = useState("");
-
-    // Step 3: submitting
-    const [submitting, setSubmitting] = useState(false);
-    const [submitError, setSubmitError] = useState("");
-
-    // Min date = today
-    const today = new Date().toISOString().split("T")[0];
-
-    // Fetch store
-    useEffect(() => {
-        async function load() {
-            setLoadingStore(true);
-            try {
-                const res = await fetch(`/api/book/${slug}`);
-                if (!res.ok) throw new Error("Toko tidak ditemukan");
-                const data = await res.json();
-                setStore(data);
-                setSelectedDate(today);
-            } catch (e: unknown) {
-                setStoreError(e instanceof Error ? e.message : "Gagal memuat data toko");
-            } finally {
-                setLoadingStore(false);
-            }
-        }
-        if (slug) load();
-    }, [slug, today]);
-
-    // Fetch slots when resource/date/pax changes (step 1)
-    const fetchSlots = useCallback(async () => {
-        if (!selectedResource || !selectedDate) return;
-        setLoadingSlots(true);
-        setSlots([]);
-        setSelectedTime("");
-        try {
-            const totalDur = selectedItems.reduce((s, it) => s + (it.product.bookingDurationMin ?? 30) * it.qty, 0);
-            const params = new URLSearchParams({
-                date: selectedDate,
-                resourceId: selectedResource.id,
-                pax: String(pax),
-                ...(totalDur > 0 ? { durationMinutes: String(totalDur) } : {}),
-            });
-            const res = await fetch(`/api/book/${slug}/availability?${params}`);
-            const data = await res.json();
-            setSlots(data.slots ?? []);
-        } catch {
-            setSlots([]);
-        } finally {
-            setLoadingSlots(false);
-        }
-    }, [selectedResource, selectedDate, pax, selectedItems, slug]);
-
-    useEffect(() => {
-        if (step === 1) fetchSlots();
-    }, [step, fetchSlots]);
-
-    // Cart helpers
-    function toggleItem(product: BookingProduct) {
-        setSelectedItems(prev => {
-            const exists = prev.find(i => i.productId === product.id);
-            if (exists) return prev.filter(i => i.productId !== product.id);
-            return [...prev, { productId: product.id, qty: 1, product }];
+      try {
+        const params = new URLSearchParams({
+          date: flow.date,
+          resourceId: flow.resourceId,
+          pax: String(flow.pax),
         });
-    }
-    function changeQty(productId: string, delta: number) {
-        setSelectedItems(prev =>
-            prev.map(i => i.productId === productId ? { ...i, qty: Math.max(1, i.qty + delta) } : i)
-        );
-    }
 
-    const totalDP = selectedItems.reduce((s, i) => s + i.product.price * i.qty, 0);
-    const totalDuration = selectedItems.reduce((s, i) => s + (i.product.bookingDurationMin ?? 30) * i.qty, 0);
-
-    // Filter resources by capacity
-    const availableResources = store?.bookingResources.filter(r => {
-        if (r.type !== "TABLE" && r.type !== "AREA" && r.type !== "ROOM") return true;
-        if (!r.capacity) return true;
-        return r.capacity >= pax;
-    }) ?? [];
-
-    // Submit booking
-    async function handleSubmit() {
-        setSubmitting(true);
-        setSubmitError("");
-        try {
-            const res = await fetch(`/api/book/${slug}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    customerName,
-                    customerPhone,
-                    customerNote,
-                    bookingDate: selectedDate,
-                    startTime: selectedTime,
-                    resourceId: selectedResource!.id,
-                    pax,
-                    items: selectedItems.map(i => ({ productId: i.productId, qty: i.qty })),
-                }),
-            });
-            const data: BookingCreateResponse = await res.json();
-            if (!res.ok) throw new Error(data.error || "Gagal membuat booking");
-
-            // If there's payment, redirect to Midtrans Snap
-            if (data.payment?.snapToken) {
-                window.snap?.pay(data.payment.snapToken, {
-                    onSuccess: async () => {
-                        await fetch(`/api/book/${slug}/confirm`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ bookingId: data.booking.id }),
-                        });
-                        router.push(`/book/${slug}/success?id=${data.booking.id}`);
-                    },
-                    onPending: () => router.push(`/book/${slug}/success?id=${data.booking.id}&status=pending`),
-                    onError: () => setSubmitError("Pembayaran gagal. Silakan coba lagi."),
-                    onClose: () => setSubmitting(false),
-                });
-            } else {
-                router.push(`/book/${slug}/success?id=${data.booking.id}`);
-            }
-        } catch (e: unknown) {
-            setSubmitError(e instanceof Error ? e.message : "Terjadi kesalahan");
-            setSubmitting(false);
+        if (flow.totalDuration > 0) {
+          params.set("durationMinutes", String(flow.totalDuration));
         }
+
+        const response = await bookingApi.getAvailability(slug, params);
+        if (!active) return;
+        setSlots(response.slots);
+      } catch (err) {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Gagal memuat slot tersedia.");
+        setSlots([]);
+      } finally {
+        if (active) setLoadingSlots(false);
+      }
     }
 
-    // ── Loading / Error states ─────────────────────────────────
-    if (loadingStore) {
-        return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="text-center">
-                    <div className="w-10 h-10 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                    <p className="text-sm text-gray-500">Memuat halaman booking...</p>
-                </div>
-            </div>
-        );
-    }
-    if (storeError || !store) {
-        return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-                <div className="text-center">
-                    <p className="text-4xl mb-3">🔍</p>
-                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Halaman tidak ditemukan</h2>
-                    <p className="text-sm text-gray-500">{storeError || "Link booking tidak valid."}</p>
-                </div>
-            </div>
-        );
-    }
+    void loadAvailability();
 
-    const needsPax = selectedResource && ["TABLE", "AREA", "ROOM"].includes(selectedResource.type);
-    const products = selectedResource?.products ?? store.bookingResources.flatMap(r => r.products);
-    const uniqueProducts = products.filter((p, i, arr) => arr.findIndex(x => x.id === p.id) === i);
+    return () => {
+      active = false;
+    };
+  }, [flow.date, flow.pax, flow.resourceId, flow.store, flow.totalDuration, slug]);
 
+  const filteredResources = useMemo(() => {
+    if (!flow.store) return [];
+
+    return flow.store.bookingResources.filter((resource) => {
+      if (resource.type === "BARBER" || !resource.capacity) return true;
+      return resource.capacity >= flow.pax;
+    });
+  }, [flow.pax, flow.store]);
+
+  const defaultDuration = flow.store?.bookingSlotMinutes ?? 30;
+  const canContinue = [
+    Boolean(flow.date),
+    Boolean(flow.resourceId && flow.slot),
+    flow.selectedProducts.length > 0,
+    Boolean(flow.customerName.trim() && flow.customerPhone.trim()),
+    true,
+  ];
+
+  async function handleSubmit() {
+    if (!flow.store || !flow.resourceId || !flow.slot || flow.selectedProducts.length === 0) return;
+
+    setSubmitting(true);
+    setError("");
+
+    try {
+      const phone = normalizePhone(flow.customerPhone);
+      const created = await bookingApi.createPublicBooking(slug, {
+        customerName: flow.customerName.trim(),
+        customerPhone: phone,
+        customerNote: flow.customerNote.trim(),
+        bookingDate: flow.date,
+        startTime: flow.slot,
+        resourceId: flow.resourceId,
+        pax: flow.pax,
+        items: flow.selectedProducts.map((item) => ({
+          productId: item.id,
+          qty: item.qty,
+        })),
+      });
+
+      const payment = await bookingApi.createMidtransTransaction({
+        bookingId: created.booking.id,
+        orderId: created.payment.orderId,
+        total: created.payment.grossAmount,
+        storeId: flow.store.id,
+        itemDetails: flow.selectedProducts.map((item) => ({
+          id: item.id,
+          price: item.price,
+          quantity: item.qty,
+          name: item.name,
+        })),
+        customer: {
+          first_name: flow.customerName.trim(),
+          phone,
+        },
+      });
+
+      setMidtrans({
+        clientKey: payment.clientKey,
+        isProduction: payment.isProduction,
+      });
+
+      if (!window.snap) {
+        throw new Error("Widget pembayaran belum siap. Coba ulang beberapa detik lagi.");
+      }
+
+      window.snap.pay(payment.token, {
+        onSuccess: async () => {
+          await bookingApi.confirmPublicBooking(slug, created.booking.id);
+          flow.resetSelectionAfterBooking();
+          router.push(`/book/${slug}/success?id=${created.booking.id}`);
+        },
+        onPending: () => {
+          router.push(`/book/${slug}/success?id=${created.booking.id}&status=pending`);
+        },
+        onError: () => {
+          setError("Pembayaran gagal. Silakan coba lagi.");
+          setSubmitting(false);
+        },
+        onClose: () => {
+          setSubmitting(false);
+        },
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membuat booking.");
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
     return (
-        <>
-            {/* Midtrans snap script */}
-            <script src="https://app.midtrans.com/snap/snap.js" data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY} async />
-
-            <div className="min-h-screen bg-gray-50">
-                {/* Store header */}
-                <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
-                    <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gray-900 flex items-center justify-center text-xl flex-shrink-0">
-                            {storeTypeIcon(store.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h1 className="text-sm font-bold text-gray-900 truncate">{store.name}</h1>
-                            <p className="text-[11px] text-gray-400 truncate">{store.address ?? store.type}</p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                            <p className="text-[10px] text-gray-400">Jam Buka</p>
-                            <p className="text-xs font-semibold text-gray-700">{store.bookingOpenTime} – {store.bookingCloseTime}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="max-w-lg mx-auto px-4 py-6">
-                    <StepBar step={step} />
-
-                    {/* ── STEP 0: Date & Resource ── */}
-                    {step === 0 && (
-                        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <div>
-                                <h2 className="text-base font-bold text-gray-900 mb-1">Pilih Tanggal</h2>
-                                <p className="text-xs text-gray-400 mb-3">Tentukan kapan kamu ingin datang</p>
-                                <input
-                                    type="date"
-                                    value={selectedDate}
-                                    min={today}
-                                    onChange={e => setSelectedDate(e.target.value)}
-                                    className="w-full px-4 py-3 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 bg-white"
-                                />
-                            </div>
-
-                            {/* Pax input — only if there are TABLE/AREA/ROOM resources */}
-                            {store.bookingResources.some(r => ["TABLE", "AREA", "ROOM"].includes(r.type)) && (
-                                <div>
-                                    <h2 className="text-base font-bold text-gray-900 mb-1">Jumlah Orang</h2>
-                                    <p className="text-xs text-gray-400 mb-3">Berapa orang yang akan datang?</p>
-                                    <div className="flex items-center gap-3">
-                                        <button onClick={() => setPax(p => Math.max(1, p - 1))}
-                                            className="w-10 h-10 rounded-xl border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors text-lg font-light">−</button>
-                                        <span className="text-xl font-bold text-gray-900 w-8 text-center">{pax}</span>
-                                        <button onClick={() => setPax(p => p + 1)}
-                                            className="w-10 h-10 rounded-xl border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors text-lg font-light">+</button>
-                                        <span className="text-sm text-gray-500 ml-1">orang</span>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div>
-                                <h2 className="text-base font-bold text-gray-900 mb-1">Pilih {resourceLabel(store.bookingResources[0]?.type ?? "BARBER")}</h2>
-                                <p className="text-xs text-gray-400 mb-3">{availableResources.length} tersedia untuk tanggal ini</p>
-                                <div className="grid grid-cols-2 gap-2.5">
-                                    {store.bookingResources.map(r => {
-                                        const isDisabled = ["TABLE", "AREA", "ROOM"].includes(r.type) && r.capacity !== null && r.capacity < pax;
-                                        const isSelected = selectedResource?.id === r.id;
-                                        return (
-                                            <button
-                                                key={r.id}
-                                                disabled={isDisabled}
-                                                onClick={() => setSelectedResource(isSelected ? null : r)}
-                                                className={`relative p-4 rounded-xl border-2 text-left transition-all duration-200 ${isDisabled ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed" :
-                                                        isSelected ? "border-gray-900 bg-gray-900 text-white" :
-                                                            "border-gray-200 bg-white hover:border-gray-400"
-                                                    }`}
-                                            >
-                                                <span className="text-2xl block mb-2">{resourceIcon(r.type)}</span>
-                                                <p className={`text-sm font-semibold ${isSelected ? "text-white" : "text-gray-900"}`}>{r.name}</p>
-                                                {r.capacity && (
-                                                    <p className={`text-[10px] mt-0.5 ${isSelected ? "text-gray-300" : "text-gray-400"}`}>
-                                                        Kapasitas {r.capacity} orang
-                                                    </p>
-                                                )}
-                                                {r.description && (
-                                                    <p className={`text-[10px] mt-0.5 truncate ${isSelected ? "text-gray-300" : "text-gray-400"}`}>{r.description}</p>
-                                                )}
-                                                {isDisabled && (
-                                                    <span className="absolute top-2 right-2 text-[9px] bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full font-medium">Terlalu kecil</span>
-                                                )}
-                                                {isSelected && (
-                                                    <span className="absolute top-2 right-2 text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded-full font-medium">✓</span>
-                                                )}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            <button
-                                disabled={!selectedDate || !selectedResource}
-                                onClick={() => setStep(1)}
-                                className="w-full py-3.5 text-sm font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                            >
-                                Lanjut → Pilih Layanan
-                            </button>
-                        </div>
-                    )}
-
-                    {/* ── STEP 1: Time + Products ── */}
-                    {step === 1 && (
-                        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <button onClick={() => setStep(0)} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 transition-colors mb-1">
-                                ← Kembali
-                            </button>
-
-                            {/* Slot picker */}
-                            <div>
-                                <h2 className="text-base font-bold text-gray-900 mb-1">Pilih Jam</h2>
-                                <p className="text-xs text-gray-400 mb-3">
-                                    {selectedResource?.name} · {selectedDate}
-                                    {totalDuration > 0 && ` · ~${totalDuration} menit`}
-                                </p>
-                                {loadingSlots ? (
-                                    <div className="flex items-center gap-2 py-6">
-                                        <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                                        <span className="text-sm text-gray-400">Mengecek ketersediaan...</span>
-                                    </div>
-                                ) : slots.length === 0 ? (
-                                    <div className="py-6 text-center">
-                                        <p className="text-2xl mb-1">😔</p>
-                                        <p className="text-sm text-gray-500">Tidak ada slot tersedia untuk tanggal ini</p>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-4 gap-2">
-                                        {slots.map(slot => (
-                                            <button
-                                                key={slot.time}
-                                                disabled={!slot.available}
-                                                onClick={() => setSelectedTime(slot.time === selectedTime ? "" : slot.time)}
-                                                title={!slot.available ? slot.reason : ""}
-                                                className={`py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ${!slot.available ? "bg-gray-100 text-gray-300 cursor-not-allowed line-through" :
-                                                        selectedTime === slot.time ? "bg-gray-900 text-white shadow-md" :
-                                                            "bg-white border border-gray-200 text-gray-700 hover:border-gray-900"
-                                                    }`}
-                                            >
-                                                {slot.time}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Products */}
-                            <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <h2 className="text-base font-bold text-gray-900">Pilih Layanan / Produk</h2>
-                                    <span className="text-[10px] text-red-500 font-medium">*wajib min. 1</span>
-                                </div>
-                                <p className="text-xs text-gray-400 mb-3">Diperlukan sebagai jaminan booking</p>
-                                <div className="space-y-2">
-                                    {uniqueProducts.map(product => {
-                                        const item = selectedItems.find(i => i.productId === product.id);
-                                        const isSelected = !!item;
-                                        return (
-                                            <div key={product.id}
-                                                className={`flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${isSelected ? "border-gray-900 bg-gray-50" : "border-gray-100 bg-white hover:border-gray-300"}`}
-                                                onClick={() => toggleItem(product)}>
-                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${isSelected ? "bg-gray-900 border-gray-900" : "border-gray-300"}`}>
-                                                    {isSelected && <span className="text-white text-[10px] font-bold">✓</span>}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
-                                                    <div className="flex items-center gap-2 mt-0.5">
-                                                        {product.category && <span className="text-[10px] text-gray-400">{product.category}</span>}
-                                                        {product.bookingDurationMin && (
-                                                            <span className="text-[10px] text-gray-400">⏱ {product.bookingDurationMin} menit</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="flex-shrink-0 text-right">
-                                                    <p className="text-sm font-bold text-gray-900">{fmtPrice(product.price)}</p>
-                                                    {isSelected && (
-                                                        <div className="flex items-center gap-2 mt-1" onClick={e => e.stopPropagation()}>
-                                                            <button onClick={() => changeQty(product.id, -1)}
-                                                                className="w-5 h-5 rounded-md bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center hover:bg-gray-300 transition-colors">−</button>
-                                                            <span className="text-xs font-bold text-gray-900 w-4 text-center">{item.qty}</span>
-                                                            <button onClick={() => changeQty(product.id, 1)}
-                                                                className="w-5 h-5 rounded-md bg-gray-900 text-white text-xs font-bold flex items-center justify-center hover:bg-gray-700 transition-colors">+</button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* DP Summary */}
-                            {selectedItems.length > 0 && (
-                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                                    <p className="text-xs font-semibold text-amber-800 mb-2">Ringkasan DP Jaminan</p>
-                                    {selectedItems.map(i => (
-                                        <div key={i.productId} className="flex justify-between text-xs text-amber-700 mb-1">
-                                            <span>{i.product.name} × {i.qty}</span>
-                                            <span className="font-medium">{fmtPrice(i.product.price * i.qty)}</span>
-                                        </div>
-                                    ))}
-                                    <div className="border-t border-amber-200 pt-2 mt-2 flex justify-between">
-                                        <span className="text-xs font-bold text-amber-900">Total DP</span>
-                                        <span className="text-sm font-bold text-amber-900">{fmtPrice(totalDP)}</span>
-                                    </div>
-                                </div>
-                            )}
-
-                            <button
-                                disabled={!selectedTime || selectedItems.length === 0}
-                                onClick={() => setStep(2)}
-                                className="w-full py-3.5 text-sm font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                            >
-                                Lanjut → Isi Data Diri
-                            </button>
-                        </div>
-                    )}
-
-                    {/* ── STEP 2: Customer Data ── */}
-                    {step === 2 && (
-                        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <button onClick={() => setStep(1)} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 transition-colors mb-1">
-                                ← Kembali
-                            </button>
-                            <div>
-                                <h2 className="text-base font-bold text-gray-900 mb-1">Data Diri</h2>
-                                <p className="text-xs text-gray-400 mb-4">Diperlukan untuk konfirmasi booking via WhatsApp</p>
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1.5">Nama Lengkap *</label>
-                                        <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)}
-                                            placeholder="John Doe"
-                                            className="w-full px-4 py-3 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1.5">Nomor WhatsApp *</label>
-                                        <input type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)}
-                                            placeholder="08123456789"
-                                            className="w-full px-4 py-3 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1.5">Catatan (opsional)</label>
-                                        <textarea value={customerNote} onChange={e => setCustomerNote(e.target.value)}
-                                            placeholder="Contoh: mau potong rambut model fade..."
-                                            rows={3}
-                                            className="w-full px-4 py-3 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 resize-none" />
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                disabled={!customerName.trim() || !customerPhone.trim()}
-                                onClick={() => setStep(3)}
-                                className="w-full py-3.5 text-sm font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                            >
-                                Lanjut → Konfirmasi
-                            </button>
-                        </div>
-                    )}
-
-                    {/* ── STEP 3: Confirmation ── */}
-                    {step === 3 && (
-                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <button onClick={() => setStep(2)} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 transition-colors mb-1">
-                                ← Kembali
-                            </button>
-                            <div>
-                                <h2 className="text-base font-bold text-gray-900 mb-1">Konfirmasi Booking</h2>
-                                <p className="text-xs text-gray-400 mb-4">Periksa kembali detail pesananmu</p>
-                            </div>
-
-                            {/* Summary card */}
-                            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-                                <div className="bg-gray-900 px-5 py-4">
-                                    <p className="text-xs text-gray-400">Booking di</p>
-                                    <p className="text-base font-bold text-white">{store.name}</p>
-                                </div>
-                                <div className="divide-y divide-gray-100">
-                                    <Row label="Tanggal" value={new Date(selectedDate).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} />
-                                    <Row label="Jam" value={selectedTime} />
-                                    <Row label={resourceLabel(selectedResource?.type ?? "BARBER")} value={selectedResource?.name ?? ""} />
-                                    {needsPax && <Row label="Jumlah Orang" value={`${pax} orang`} />}
-                                    <Row label="Nama" value={customerName} />
-                                    <Row label="WhatsApp" value={customerPhone} />
-                                    {customerNote && <Row label="Catatan" value={customerNote} />}
-                                </div>
-                                <div className="px-5 py-4 bg-gray-50">
-                                    <p className="text-xs font-semibold text-gray-500 mb-2">Layanan / Produk</p>
-                                    {selectedItems.map(i => (
-                                        <div key={i.productId} className="flex justify-between text-sm mb-1.5">
-                                            <span className="text-gray-700">{i.product.name} × {i.qty}</span>
-                                            <span className="font-medium text-gray-900">{fmtPrice(i.product.price * i.qty)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="px-5 py-4 bg-amber-50 border-t border-amber-100 flex items-center justify-between">
-                                    <div>
-                                        <p className="text-xs text-amber-700 font-medium">Total DP Jaminan</p>
-                                        <p className="text-[10px] text-amber-500">Dibayarkan sekarang</p>
-                                    </div>
-                                    <p className="text-xl font-black text-amber-900">{fmtPrice(totalDP)}</p>
-                                </div>
-                            </div>
-
-                            {submitError && (
-                                <div className="px-4 py-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl">{submitError}</div>
-                            )}
-
-                            <button
-                                onClick={handleSubmit}
-                                disabled={submitting}
-                                className="w-full py-4 text-sm font-bold bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-60 transition-all flex items-center justify-center gap-2"
-                            >
-                                {submitting ? (
-                                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Memproses...</>
-                                ) : (
-                                    <>🔒 Bayar DP & Konfirmasi Booking</>
-                                )}
-                            </button>
-                            <p className="text-[10px] text-gray-400 text-center">
-                                Pembayaran diproses dengan aman. DP akan digunakan sebagai jaminan kedatangan.
-                            </p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe,_#f8fafc_38%,_#f8fafc)] px-4 py-10">
+        <div className="mx-auto max-w-6xl">
+          <LoadingState label="Memuat halaman booking..." />
+        </div>
+      </div>
     );
+  }
+
+  if (!flow.store) {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe,_#f8fafc_38%,_#f8fafc)] px-4 py-10">
+        <div className="mx-auto max-w-6xl">
+          <ErrorState description={error || "Store booking tidak ditemukan."} retry={() => void loadStore()} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {midtrans ? (
+        <Script
+          src={`${midtrans.isProduction ? "https://app.midtrans.com" : "https://app.sandbox.midtrans.com"}/snap/snap.js`}
+          data-client-key={midtrans.clientKey}
+          strategy="afterInteractive"
+        />
+      ) : null}
+
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe,_#f8fafc_38%,_#f8fafc)] px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mx-auto max-w-6xl space-y-6">
+          <header className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
+            <div className="grid gap-6 px-6 py-7 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+              <div>
+                <p className="text-sm font-medium text-sky-700">Online Booking</p>
+                <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{flow.store.name}</h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
+                  Pilih tanggal, resource, dan layanan. Setelah itu DP dibayar via Midtrans untuk mengunci reservasi.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-500">
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5">{flow.store.type}</span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5">{flow.store.slug}</span>
+                  {flow.store.waNumber ? (
+                    <span className="rounded-full bg-slate-100 px-3 py-1.5">{flow.store.waNumber}</span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+                <BookingStepper currentStep={step} steps={STEPS} />
+                <p className="mt-4 text-sm text-slate-500">
+                  {formatDateLabel(flow.date || todayInJakarta(), {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </p>
+                <p className="mt-2 text-lg font-semibold text-slate-950">
+                  {flow.totalAmount > 0 ? formatCurrency(flow.totalAmount) : "Pilih layanan dulu"}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">Total durasi estimasi {flow.totalDuration || defaultDuration} menit</p>
+              </div>
+            </div>
+          </header>
+
+          {error ? <ErrorState description={error} retry={() => void loadStore()} /> : null}
+
+          <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
+            <div className="space-y-6">
+              <SectionCard title="1. Pilih Tanggal" description="Cek slot yang masih tersedia secara real time.">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={() => {
+                      flow.setDate(shiftDate(flow.date || todayInJakarta(), -1));
+                      setStep(0);
+                    }}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Hari sebelumnya
+                  </button>
+                  <input
+                    type="date"
+                    value={flow.date}
+                    onChange={(event) => {
+                      flow.setDate(event.target.value);
+                      setStep(0);
+                    }}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+                  />
+                  <button
+                    onClick={() => {
+                      flow.setDate(shiftDate(flow.date || todayInJakarta(), 1));
+                      setStep(0);
+                    }}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Hari berikutnya
+                  </button>
+                </div>
+              </SectionCard>
+
+              <SectionCard
+                title="2. Pilih Resource"
+                description="Resource dengan kapasitas kurang dari jumlah pax otomatis tidak ditampilkan."
+              >
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="text-sm text-slate-500">Jumlah orang</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={flow.pax}
+                    onChange={(event) => flow.setPax(Number(event.target.value) || 1)}
+                    className="w-24 rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+                  />
+                </div>
+
+                {filteredResources.length === 0 ? (
+                  <EmptyState
+                    title="Tidak ada resource yang cocok"
+                    description="Kurangi jumlah pax atau hubungi toko untuk bantuan booking."
+                  />
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {filteredResources.map((resource) => {
+                      const active = flow.resourceId === resource.id;
+                      return (
+                        <button
+                          key={resource.id}
+                          onClick={() => {
+                            flow.setResourceId(resource.id);
+                            setStep(Math.max(step, 1));
+                          }}
+                          className={`rounded-3xl border p-5 text-left transition ${
+                            active ? "border-slate-900 bg-slate-950 text-white" : "border-slate-200 bg-white hover:border-slate-400"
+                          }`}
+                        >
+                          <p className="text-sm font-semibold">{resource.name}</p>
+                          <p className={`mt-1 text-xs ${active ? "text-slate-300" : "text-slate-500"}`}>
+                            {RESOURCE_TYPE_LABEL[resource.type]} {resource.capacity ? `• ${resource.capacity} orang` : ""}
+                          </p>
+                          <p className={`mt-3 text-sm ${active ? "text-slate-200" : "text-slate-600"}`}>
+                            {resource.description || "Tanpa deskripsi tambahan."}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </SectionCard>
+
+              <SectionCard title="3. Pilih Slot & Layanan" description="Slot akan refresh saat pilihan berubah.">
+                <div className="space-y-5">
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Slot tersedia</p>
+                    {loadingSlots ? (
+                      <div className="mt-3">
+                        <LoadingState label="Memuat slot..." />
+                      </div>
+                    ) : slots.length === 0 ? (
+                      <p className="mt-3 text-sm text-slate-500">Belum ada slot untuk kombinasi pilihan saat ini.</p>
+                    ) : (
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {slots.map((slot) => (
+                          <button
+                            key={slot.time}
+                            disabled={!slot.available}
+                            onClick={() => {
+                              flow.setSlot(slot.time);
+                              setStep(Math.max(step, 1));
+                            }}
+                            className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
+                              flow.slot === slot.time
+                                ? "border-slate-900 bg-slate-950 text-white"
+                                : slot.available
+                                  ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                                  : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                            }`}
+                          >
+                            <div>{formatTimeLabel(slot.time)}</div>
+                            {!slot.available && slot.reason ? (
+                              <div className="mt-1 text-[11px] opacity-80">{slot.reason}</div>
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Layanan / produk booking</p>
+                    {flow.store.products.length === 0 ? (
+                      <p className="mt-3 text-sm text-slate-500">Belum ada layanan booking aktif.</p>
+                    ) : (
+                      <div className="mt-3 grid gap-3">
+                        {flow.store.products.map((product) => {
+                          const selected = flow.selectedProducts.find((item) => item.id === product.id);
+                          return (
+                            <div
+                              key={product.id}
+                              className={`rounded-3xl border p-4 transition ${
+                                selected ? "border-slate-900 bg-slate-50" : "border-slate-200 bg-white"
+                              }`}
+                            >
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-950">{product.name}</p>
+                                  <p className="mt-1 text-sm text-slate-500">
+                                    {formatCurrency(product.price)} • {product.bookingDurationMin || defaultDuration} menit
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => flow.toggleProduct(product.id)}
+                                    className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
+                                      selected
+                                        ? "bg-slate-950 text-white"
+                                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                                    }`}
+                                  >
+                                    {selected ? "Dipilih" : "Pilih"}
+                                  </button>
+                                  {selected ? (
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={selected.qty}
+                                      onChange={(event) => flow.setProductQty(product.id, Number(event.target.value) || 1)}
+                                      className="w-20 rounded-2xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+                                    />
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="4. Data Customer" description="Nomor WhatsApp akan dinormalisasi ke format 62.">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">Nama</span>
+                    <input
+                      value={flow.customerName}
+                      onChange={(event) => {
+                        flow.setCustomerField("customerName", event.target.value);
+                        setStep(Math.max(step, 3));
+                      }}
+                      className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+                      placeholder="Nama lengkap"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">WhatsApp</span>
+                    <input
+                      value={flow.customerPhone}
+                      onChange={(event) => {
+                        flow.setCustomerField("customerPhone", event.target.value);
+                        setStep(Math.max(step, 3));
+                      }}
+                      onBlur={(event) => flow.setCustomerField("customerPhone", normalizePhone(event.target.value))}
+                      className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+                      placeholder="62812xxxxxxx"
+                    />
+                  </label>
+                </div>
+                <label className="mt-4 block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Catatan</span>
+                  <textarea
+                    rows={4}
+                    value={flow.customerNote}
+                    onChange={(event) => flow.setCustomerField("customerNote", event.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+                    placeholder="Opsional, misalnya request kursi dekat jendela."
+                  />
+                </label>
+              </SectionCard>
+            </div>
+
+            <div className="space-y-6">
+              <SectionCard title="Ringkasan Booking" description="Periksa lagi sebelum lanjut ke pembayaran.">
+                <div className="space-y-4 text-sm">
+                  <SummaryRow label="Tanggal" value={flow.date ? formatDateLabel(flow.date) : "-"} />
+                  <SummaryRow label="Slot" value={flow.slot ? formatTimeLabel(flow.slot) : "-"} />
+                  <SummaryRow label="Resource" value={flow.resource?.name || "-"} />
+                  <SummaryRow label="Pax" value={String(flow.pax)} />
+                </div>
+
+                <div className="mt-5 border-t border-slate-100 pt-5">
+                  <p className="text-sm font-semibold text-slate-900">Item dipilih</p>
+                  {flow.selectedProducts.length === 0 ? (
+                    <p className="mt-2 text-sm text-slate-500">Belum ada layanan dipilih.</p>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      {flow.selectedProducts.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3"
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">{item.name}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {item.qty} x {formatCurrency(item.price)}
+                            </p>
+                          </div>
+                          <p className="text-sm font-semibold text-slate-900">{formatCurrency(item.price * item.qty)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5 rounded-3xl bg-slate-950 px-5 py-4 text-white">
+                  <p className="text-sm text-slate-300">Total DP</p>
+                  <p className="mt-2 text-2xl font-semibold">{formatCurrency(flow.totalAmount)}</p>
+                </div>
+
+                <button
+                  disabled={!canContinue.every(Boolean) || submitting}
+                  onClick={() => {
+                    setStep(4);
+                    void handleSubmit();
+                  }}
+                  className="mt-5 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {submitting ? "Menyiapkan pembayaran..." : "Lanjut ke pembayaran"}
+                </button>
+              </SectionCard>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-    return (
-        <div className="flex justify-between px-5 py-3 gap-4">
-            <span className="text-xs text-gray-400 flex-shrink-0">{label}</span>
-            <span className="text-xs font-medium text-gray-900 text-right">{value}</span>
-        </div>
-    );
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <span className="text-slate-500">{label}</span>
+      <span className="text-right font-medium text-slate-900">{value}</span>
+    </div>
+  );
 }

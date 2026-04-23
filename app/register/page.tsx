@@ -1,11 +1,6 @@
 "use client";
 
-// ============================================================
-// LOKASI: app/register/page.tsx
-// REPLACE file lama dengan ini
-// ============================================================
-
-import { useState, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
@@ -30,22 +25,24 @@ interface ReferralInfo {
 }
 
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50/30" />}>
+      <RegisterPageContent />
+    </Suspense>
+  );
+}
+
+function RegisterPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  // Pre-fill kode referral dari URL jika ada (?ref=TK-XXXX-XXXX)
   const refFromUrl = searchParams.get("ref") ?? "";
 
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  // ── Step 1: Kode Referral ───────────────────────────────────
   const [referralCode, setReferralCode] = useState(refFromUrl.toUpperCase());
   const [referralInfo, setReferralInfo] = useState<ReferralInfo | null>(null);
   const [checkingCode, setCheckingCode] = useState(false);
-
-  // ── Step 2: Data Akun ───────────────────────────────────────
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -53,8 +50,6 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState("");
   const [emailError, setEmailError] = useState("");
   const [phoneError, setPhoneError] = useState("");
-
-  // ── Step 3: Data Toko + Midtrans ───────────────────────────
   const [storeName, setStoreName] = useState("");
   const [storeType, setStoreType] = useState("cafe");
   const [storeAddress, setStoreAddress] = useState("");
@@ -64,20 +59,18 @@ export default function RegisterPage() {
   const [midtransClientKey, setMidtransClientKey] = useState("");
   const [showMidtrans, setShowMidtrans] = useState(false);
 
-  // Auto-check kode referral dari URL saat mount
   useEffect(() => {
     if (refFromUrl) {
-      checkReferralCode(refFromUrl.toUpperCase());
+      void checkReferralCode(refFromUrl.toUpperCase());
     }
   }, [refFromUrl]);
 
-  // Debounce check kode referral saat user ketik
   useEffect(() => {
     if (!referralCode || referralCode.length < 10) {
       setReferralInfo(null);
       return;
     }
-    const t = setTimeout(() => checkReferralCode(referralCode), 600);
+    const t = setTimeout(() => void checkReferralCode(referralCode), 600);
     return () => clearTimeout(t);
   }, [referralCode]);
 
@@ -86,7 +79,7 @@ export default function RegisterPage() {
     setCheckingCode(true);
     try {
       const res = await fetch(`/api/referral/validate?code=${encodeURIComponent(code.trim().toUpperCase())}`);
-      const data = await res.json();
+      const data = (await res.json()) as ReferralInfo;
       setReferralInfo(data);
     } catch {
       setReferralInfo({ valid: false, error: "Gagal cek kode. Coba lagi." });
@@ -95,7 +88,6 @@ export default function RegisterPage() {
     }
   }
 
-  // ── Navigasi step ───────────────────────────────────────────
   function goToStep2() {
     if (!referralInfo?.valid) {
       setError("Masukkan kode referral yang valid terlebih dahulu.");
@@ -118,12 +110,11 @@ export default function RegisterPage() {
       return;
     }
 
-    const normalizedEmail = emailValidation.normalized;
-
     if (password !== confirmPassword) {
       setError("Password tidak cocok.");
       return;
     }
+
     if (password.length < 8) {
       setError("Password minimal 8 karakter.");
       return;
@@ -136,7 +127,7 @@ export default function RegisterPage() {
       return;
     }
 
-    setEmail(normalizedEmail);
+    setEmail(emailValidation.normalized);
     setPhone(phoneValidation.normalized);
     setEmailError("");
     setPhoneError("");
@@ -155,35 +146,30 @@ export default function RegisterPage() {
     }
 
     const emailValidation = validateRegistrationEmail(email);
+    const phoneValidation = validateWhatsappNumber(phone, "Nomor WhatsApp");
+    const waValidation = waNumber.trim()
+      ? validateWhatsappNumber(waNumber, "No. WA toko")
+      : { valid: true as const, normalized: phoneValidation.normalized ?? "" };
+
     if (!emailValidation.valid || !emailValidation.normalized) {
       setEmailError(emailValidation.error ?? "Email tidak valid.");
       setError(emailValidation.error ?? "Email tidak valid.");
       return;
     }
-    const normalizedEmail = emailValidation.normalized;
 
-    const phoneValidation = validateWhatsappNumber(phone, "Nomor WhatsApp");
     if (!phoneValidation.valid || !phoneValidation.normalized) {
       setPhoneError(phoneValidation.error ?? "Nomor WhatsApp tidak valid.");
       setError(phoneValidation.error ?? "Nomor WhatsApp tidak valid.");
       return;
     }
-    const normalizedPhone = phoneValidation.normalized;
 
-    const waValidation = waNumber.trim()
-      ? validateWhatsappNumber(waNumber, "No. WA toko")
-      : { valid: true as const, normalized: normalizedPhone };
     if (!waValidation.valid || !waValidation.normalized) {
       setWaNumberError(waValidation.error ?? "No. WA toko tidak valid.");
       setError(waValidation.error ?? "No. WA toko tidak valid.");
       return;
     }
-    const normalizedWaNumber = waValidation.normalized;
 
     setError("");
-    setEmailError("");
-    setPhoneError("");
-    setWaNumberError("");
     setLoading(true);
 
     try {
@@ -191,22 +177,21 @@ export default function RegisterPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: normalizedEmail,
+          email: emailValidation.normalized,
           password,
           ownerName,
-          phone: normalizedPhone,
+          phone: phoneValidation.normalized,
           referralCode: referralCode.trim().toUpperCase(),
           storeName,
           storeType,
           storeAddress: storeAddress || null,
-          waNumber: normalizedWaNumber,
+          waNumber: waValidation.normalized,
           midtransServerKey: midtransServerKey || null,
           midtransClientKey: midtransClientKey || null,
         }),
       });
 
       const data = await res.json();
-
       if (!res.ok) {
         setError(data.error ?? "Registrasi gagal. Coba lagi.");
         setLoading(false);
@@ -215,17 +200,14 @@ export default function RegisterPage() {
 
       clearDemoMeta();
 
-      // Auto login setelah register berhasil
       const login = await signIn("credentials", {
-        email: normalizedEmail,
+        email: emailValidation.normalized,
         password,
         redirect: false,
       });
 
       setLoading(false);
-
       if (login?.error) {
-        // Register sukses tapi login gagal — arahkan ke login manual
         router.push("/login?registered=1");
       } else {
         router.push("/dashboard");
@@ -236,18 +218,9 @@ export default function RegisterPage() {
     }
   }
 
-  // ── Plan badge color ─────────────────────────────────────────
-  const planColor: Record<string, string> = {
-    starter: "bg-slate-100 text-slate-700",
-    pro: "bg-amber-100 text-amber-800",
-    ultra: "bg-purple-100 text-purple-800",
-  };
-
   return (
     <div className="flex-1 min-h-0 overflow-y-auto bg-gradient-to-br from-amber-50 via-white to-orange-50/30 flex items-start justify-center px-4 py-8 md:py-12">
       <div className="w-full max-w-md">
-
-        {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/home" className="inline-flex items-center gap-2.5 group">
             <div className="w-10 h-10 bg-amber-700 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
@@ -260,372 +233,83 @@ export default function RegisterPage() {
               <span className="text-slate-900">Ku</span>
             </span>
           </Link>
-          <p className="text-sm text-slate-400 mt-2">Daftar akun baru</p>
+          <p className="text-sm text-slate-400 mt-2">Daftar akun baru untuk toko kamu</p>
         </div>
 
-        {/* Progress */}
-        <div className="flex items-center gap-2 mb-8">
-          {([1, 2, 3] as Step[]).map((s) => (
-            <div key={s} className="flex-1 flex flex-col items-center gap-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${
-                s === step ? "bg-amber-700 text-white scale-110 shadow-md" :
-                s < step ? "bg-amber-200 text-amber-800" :
-                "bg-slate-100 text-slate-400"
-              }`}>
-                {s < step ? "✓" : s}
-              </div>
-              <span className={`text-[10px] font-bold ${s === step ? "text-amber-700" : "text-slate-400"}`}>
-                {s === 1 ? "Kode" : s === 2 ? "Akun" : "Toko"}
-              </span>
-            </div>
-          ))}
-          <div className="absolute left-0 right-0 h-0.5 bg-slate-100 -z-10 mx-8" />
-        </div>
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-xl shadow-slate-100/80 p-8 space-y-4">
+          <div className="flex gap-2">
+            {[1, 2, 3].map((item) => (
+              <div key={item} className={`h-2 flex-1 rounded-full ${item <= step ? "bg-amber-700" : "bg-slate-100"}`} />
+            ))}
+          </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-xl shadow-slate-100/80 p-8">
-
-          {/* ── STEP 1: Kode Referral ─────────────────────────── */}
-          {step === 1 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 mb-1">Masukkan Kode Referral</h2>
-                <p className="text-sm text-slate-400">
-                  Kode dikirim admin via WhatsApp setelah kamu berlangganan.
-                </p>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-600 mb-2 block uppercase tracking-wider">
-                  Kode Referral
-                </label>
+          {step === 1 ? (
+            <div className="space-y-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Kode referral</span>
                 <input
-                  type="text"
                   value={referralCode}
-                  onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                  onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"
                   placeholder="TK-XXXX-XXXX"
-                  maxLength={12}
-                  className="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition font-mono text-center text-lg tracking-widest font-bold text-black"
                 />
-
-                {/* Status kode */}
-                <div className="mt-2 min-h-[24px]">
-                  {checkingCode && (
-                    <p className="text-xs text-slate-400 flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 border-2 border-amber-300 border-t-amber-700 rounded-full animate-spin" />
-                      Mengecek kode...
-                    </p>
-                  )}
-                  {!checkingCode && referralInfo?.valid && (
-                    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold ${planColor[referralInfo.plan ?? "starter"]}`}>
-                      ✓ {referralInfo.message}
-                    </div>
-                  )}
-                  {!checkingCode && referralInfo && !referralInfo.valid && (
-                    <p className="text-xs text-red-500 flex items-center gap-1">
-                      ✗ {referralInfo.error}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Info: cara dapat kode */}
-              <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-2">
-                <p className="text-xs font-bold text-amber-800">Belum punya kode?</p>
-                <p className="text-xs text-amber-700 leading-relaxed">
-                  Pilih paket di halaman beranda → hubungi admin via WhatsApp → setelah pembayaran, admin akan kirimkan kode referral kamu.
-                </p>
-                <a
-                  href="/home#harga"
-                  className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-900 transition"
-                >
-                  Lihat paket harga →
-                </a>
-              </div>
-
-              {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-xl">{error}</p>}
-
+              </label>
+              {checkingCode ? <p className="text-sm text-slate-500">Memeriksa kode referral...</p> : null}
+              {referralInfo?.error ? <p className="text-sm text-rose-600">{referralInfo.error}</p> : null}
+              {referralInfo?.valid ? <p className="text-sm text-emerald-600">{referralInfo.message || "Kode referral valid."}</p> : null}
               <button
                 onClick={goToStep2}
                 disabled={!referralInfo?.valid}
-                className="w-full py-3.5 bg-amber-700 text-white rounded-2xl font-black hover:bg-amber-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
               >
-                Lanjutkan →
+                Lanjut
               </button>
-
-              <p className="text-center text-xs text-slate-400">
-                Sudah punya akun?{" "}
-                <Link href="/login" className="text-amber-700 font-bold hover:underline">
-                  Masuk
-                </Link>
-              </p>
             </div>
-          )}
+          ) : null}
 
-          {/* ── STEP 2: Data Akun ─────────────────────────────── */}
-          {step === 2 && (
-            <div className="space-y-5">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 mb-1">Data Akun</h2>
-                <p className="text-sm text-slate-400">Email dan password untuk login ke TokoKu.</p>
-              </div>
-
-              {/* Paket aktif */}
-              {referralInfo && (
-                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold ${planColor[referralInfo.plan ?? "starter"]}`}>
-                  Paket: {referralInfo.planLabel} {referralInfo.tierLabel} ({referralInfo.durationDays} hari)
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-600 mb-1.5 block">Nama Pemilik Toko *</label>
-                  <input type="text" value={ownerName} onChange={(e) => setOwnerName(e.target.value)}
-                    placeholder="Ahmad Fauzi"
-                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 mb-1.5 block">Email *</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      if (emailError) {
-                        setEmailError("");
-                      }
-                    }}
-                    onBlur={() => {
-                      const emailValidation = validateRegistrationEmail(email);
-                      setEmailError(emailValidation.valid ? "" : emailValidation.error ?? "");
-                      if (emailValidation.valid && emailValidation.normalized) {
-                        setEmail(emailValidation.normalized);
-                      }
-                    }}
-                    placeholder="kamu@gmail.com"
-                    autoComplete="email"
-                    inputMode="email"
-                    maxLength={254}
-                    className={`w-full px-4 py-3 text-sm text-slate-900 border rounded-2xl outline-none transition ${
-                      emailError
-                        ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                        : "border-slate-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
-                    }`}
-                  />
-                  {emailError && <p className="text-[10px] text-red-500 mt-1">{emailError}</p>}
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 mb-1.5 block">No. WhatsApp *</label>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => {
-                      setPhone(normalizePhoneInput(e.target.value));
-                      if (phoneError) {
-                        setPhoneError("");
-                      }
-                    }}
-                    onBlur={() => {
-                      const phoneValidation = validateWhatsappNumber(phone, "Nomor WhatsApp");
-                      setPhoneError(phoneValidation.valid ? "" : phoneValidation.error ?? "");
-                      if (phoneValidation.valid && phoneValidation.normalized) {
-                        setPhone(phoneValidation.normalized);
-                      }
-                    }}
-                    placeholder="628123456789"
-                    autoComplete="tel"
-                    inputMode="numeric"
-                    maxLength={15}
-                    className={`w-full px-4 py-3 text-sm text-slate-900 border rounded-2xl outline-none transition font-mono ${
-                      phoneError
-                        ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                        : "border-slate-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
-                    }`}
-                  />
-                  {phoneError && <p className="text-[10px] text-red-500 mt-1">{phoneError}</p>}
-                  <p className="text-[10px] text-slate-400 mt-1">Format: 628xxxxxxxxx (tanpa tanda +)</p>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 mb-1.5 block">Password * (min. 8 karakter)</label>
-                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 mb-1.5 block">Konfirmasi Password *</label>
-                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                      className={`w-full px-4 py-3 text-sm text-slate-900 border rounded-2xl outline-none transition ${
-                      confirmPassword && password !== confirmPassword
-                        ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                        : "border-slate-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
-                    }`}
-                  />
-                  {confirmPassword && password !== confirmPassword && (
-                    <p className="text-[10px] text-red-500 mt-1">Password tidak cocok</p>
-                  )}
-                </div>
-              </div>
-
-              {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-xl">{error}</p>}
-
+          {step === 2 ? (
+            <div className="space-y-4">
+              <input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} placeholder="Nama owner" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" />
+              <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" />
+              {emailError ? <p className="text-sm text-rose-600">{emailError}</p> : null}
+              <input value={phone} onChange={(event) => setPhone(normalizePhoneInput(event.target.value))} placeholder="Nomor WhatsApp" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" />
+              {phoneError ? <p className="text-sm text-rose-600">{phoneError}</p> : null}
+              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" />
+              <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Konfirmasi password" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" />
               <div className="flex gap-3">
-                <button onClick={() => { setStep(1); setError(""); }}
-                  className="flex-1 py-3 border-2 border-slate-200 text-slate-600 rounded-2xl font-bold hover:bg-slate-50 transition"
-                >
-                  ← Kembali
-                </button>
-                <button onClick={goToStep3}
-                  className="flex-1 py-3 bg-amber-700 text-white rounded-2xl font-black hover:bg-amber-800 transition"
-                >
-                  Lanjutkan →
-                </button>
+                <button onClick={() => setStep(1)} className="flex-1 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Kembali</button>
+                <button onClick={goToStep3} className="flex-1 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Lanjut</button>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {/* ── STEP 3: Data Toko ─────────────────────────────── */}
-          {step === 3 && (
-            <div className="space-y-5">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 mb-1">Data Toko</h2>
-                <p className="text-sm text-slate-400">Info toko kamu yang akan tampil di sistem kasir.</p>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-600 mb-1.5 block">Nama Toko *</label>
-                  <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)}
-                    placeholder="Barbershop Keren"
-                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-bold text-slate-600 mb-1.5 block">Jenis Toko</label>
-                    <select value={storeType} onChange={(e) => setStoreType(e.target.value)}
-                      className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 bg-white"
-                    >
-                      <option value="cafe">Cafe</option>
-                      <option value="barbershop">Barbershop</option>
-                      <option value="resto">Restoran</option>
-                      <option value="warung">Warung</option>
-                      <option value="toko">Toko</option>
-                      <option value="salon">Salon</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-600 mb-1.5 block">No. WA Toko</label>
-                    <input
-                      type="tel"
-                      value={waNumber}
-                      onChange={(e) => {
-                        setWaNumber(normalizePhoneInput(e.target.value));
-                        if (waNumberError) {
-                          setWaNumberError("");
-                        }
-                      }}
-                      onBlur={() => {
-                        if (!waNumber.trim()) {
-                          setWaNumberError("");
-                          return;
-                        }
-
-                        const waValidation = validateWhatsappNumber(waNumber, "No. WA toko");
-                        setWaNumberError(waValidation.valid ? "" : waValidation.error ?? "");
-                        if (waValidation.valid && waValidation.normalized) {
-                          setWaNumber(waValidation.normalized);
-                        }
-                      }}
-                      placeholder="628xxx"
-                      inputMode="numeric"
-                      maxLength={15}
-                      className={`w-full px-4 py-3 text-sm text-slate-900 border rounded-2xl outline-none transition font-mono ${
-                        waNumberError
-                          ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                          : "border-slate-200 focus:border-amber-400"
-                      }`}
-                    />
-                    {waNumberError && <p className="text-[10px] text-red-500 mt-1">{waNumberError}</p>}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-600 mb-1.5 block">Alamat Toko</label>
-                  <input type="text" value={storeAddress} onChange={(e) => setStoreAddress(e.target.value)}
-                    placeholder="Jl. Contoh No. 1, Jakarta"
-                    className="w-full px-4 py-3 text-sm text-slate-900 border border-slate-200 rounded-2xl outline-none focus:border-amber-400 transition"
-                  />
-                </div>
-
-                {/* Midtrans — opsional, bisa diisi nanti di Settings */}
-                <div className="border border-slate-100 rounded-2xl overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setShowMidtrans(!showMidtrans)}
-                    className="w-full px-4 py-3 flex items-center justify-between text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className="text-base">💳</span>
-                      Kunci Midtrans (opsional — untuk QRIS)
-                    </span>
-                    <span className={`transition-transform ${showMidtrans ? "rotate-180" : ""}`}>▼</span>
-                  </button>
-
-                  {showMidtrans && (
-                    <div className="px-4 pb-4 space-y-3 bg-blue-50/50">
-                      <p className="text-[10px] text-blue-600 leading-relaxed pt-2">
-                        Dapatkan dari{" "}
-                        <a href="https://midtrans.com" target="_blank" rel="noopener noreferrer" className="font-bold underline">
-                          midtrans.com
-                        </a>{" "}
-                        → Settings → Access Keys. Bisa diisi nanti di Settings toko.
-                      </p>
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500 mb-1 block">Server Key</label>
-                        <input type="text" value={midtransServerKey} onChange={(e) => setMidtransServerKey(e.target.value)}
-                          placeholder="SB-Mid-server-XXXXXXXX atau Mid-server-XXXXXXXX"
-                          className="w-full px-3 py-2 text-xs text-slate-900 border border-blue-200 rounded-xl outline-none focus:border-amber-400 font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500 mb-1 block">Client Key</label>
-                        <input type="text" value={midtransClientKey} onChange={(e) => setMidtransClientKey(e.target.value)}
-                          placeholder="SB-Mid-client-XXXXXXXX atau Mid-client-XXXXXXXX"
-                          className="w-full px-3 py-2 text-xs text-slate-900 border border-blue-200 rounded-xl outline-none focus:border-amber-400 font-mono"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-xl">{error}</p>}
-
+          {step === 3 ? (
+            <div className="space-y-4">
+              <input value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="Nama toko" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" />
+              <input value={storeType} onChange={(event) => setStoreType(event.target.value)} placeholder="Tipe toko" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" />
+              <textarea value={storeAddress} onChange={(event) => setStoreAddress(event.target.value)} placeholder="Alamat toko" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" rows={3} />
+              <input value={waNumber} onChange={(event) => setWaNumber(normalizePhoneInput(event.target.value))} placeholder="No. WA toko" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" />
+              {waNumberError ? <p className="text-sm text-rose-600">{waNumberError}</p> : null}
+              <label className="flex items-center gap-3 text-sm text-slate-600">
+                <input type="checkbox" checked={showMidtrans} onChange={(event) => setShowMidtrans(event.target.checked)} />
+                Isi Midtrans key sekarang
+              </label>
+              {showMidtrans ? (
+                <>
+                  <input value={midtransServerKey} onChange={(event) => setMidtransServerKey(event.target.value)} placeholder="Midtrans Server Key" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" />
+                  <input value={midtransClientKey} onChange={(event) => setMidtransClientKey(event.target.value)} placeholder="Midtrans Client Key" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900" />
+                </>
+              ) : null}
               <div className="flex gap-3">
-                <button onClick={() => { setStep(2); setError(""); }}
-                  className="flex-1 py-3 border-2 border-slate-200 text-slate-600 rounded-2xl font-bold hover:bg-slate-50 transition"
-                >
-                  ← Kembali
-                </button>
-                <button onClick={handleSubmit} disabled={loading}
-                  className="flex-1 py-3 bg-amber-700 text-white rounded-2xl font-black hover:bg-amber-800 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Membuat akun...
-                    </>
-                  ) : (
-                    "Buat Akun 🎉"
-                  )}
+                <button onClick={() => setStep(2)} className="flex-1 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Kembali</button>
+                <button onClick={() => void handleSubmit()} disabled={loading} className="flex-1 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50">
+                  {loading ? "Mendaftar..." : "Daftar"}
                 </button>
               </div>
             </div>
-          )}
+          ) : null}
+
+          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
         </div>
       </div>
     </div>

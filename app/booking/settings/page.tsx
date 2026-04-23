@@ -1,280 +1,373 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
-import { useDemoMode } from "@/lib/demo";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { bookingApi } from "@/lib/booking/api";
+import { buildTimeSlots, formatCurrency } from "@/lib/booking/format";
+import { useStoreIdentity } from "@/lib/booking/use-store-id";
+import type { BookingProduct, BookingSettingsResponse } from "@/lib/booking/types";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  SectionCard,
+  Toggle,
+} from "@/components/booking/ui";
 
-interface BookingSettings {
-    bookingOpenTime: string;
-    bookingCloseTime: string;
-    bookingSlotMinutes: number;
-    bookingGraceMinutes: number;
-}
-interface BookingProduct {
-    id: string;
-    name: string;
-    price: number;
-    category: string | null;
-    bookingEnabled: boolean;
-    bookingDurationMin: number | null;
-}
-
-interface SessionUser {
-    storeId?: string;
-}
-
-function fmtPrice(n: number) {
-    return "Rp " + n.toLocaleString("id-ID");
-}
+type SettingsForm = {
+  bookingOpenTime: string;
+  bookingCloseTime: string;
+  bookingSlotMinutes: number;
+  bookingGraceMinutes: number;
+};
 
 export default function BookingSettingsPage() {
-    const { data: session, status } = useSession();
-    const { demoStoreId, isDemoMode } = useDemoMode();
-    const sessionUser = (session?.user ?? {}) as SessionUser;
-    const storeId = isDemoMode ? demoStoreId : sessionUser.storeId ?? "";
+  const { storeId, ready, status } = useStoreIdentity();
+  const [data, setData] = useState<BookingSettingsResponse | null>(null);
+  const [form, setForm] = useState<SettingsForm | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [productSavingId, setProductSavingId] = useState("");
 
-    const [settings, setSettings] = useState<BookingSettings>({
-        bookingOpenTime: "08:00",
-        bookingCloseTime: "21:00",
-        bookingSlotMinutes: 30,
-        bookingGraceMinutes: 15,
-    });
-    const [products, setProducts] = useState<BookingProduct[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [savedMsg, setSavedMsg] = useState("");
-    const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    if (!storeId) return;
 
-    useEffect(() => {
-        if (status === "loading" || !storeId) return;
-        setLoading(true);
-        Promise.all([
-            fetch(`/api/booking/settings?storeId=${storeId}`).then(r => r.json()),
-            fetch(`/api/products?storeId=${storeId}`).then(r => r.json()),
-        ]).then(([settingsData, productsData]) => {
-            if (settingsData.bookingOpenTime) setSettings(settingsData);
-            setProducts(productsData.products ?? productsData ?? []);
-        }).catch(() => setError("Gagal memuat pengaturan."))
-            .finally(() => setLoading(false));
-    }, [storeId, status]);
+    setLoading(true);
+    setError("");
 
-    async function saveSettings() {
-        setSaving(true); setSavedMsg(""); setError("");
-        try {
-            const res = await fetch("/api/booking/settings", {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ storeId, ...settings }),
-            });
-            if (!res.ok) throw new Error();
-            setSavedMsg("Pengaturan berhasil disimpan!");
-            setTimeout(() => setSavedMsg(""), 3000);
-        } catch {
-            setError("Gagal menyimpan pengaturan.");
-        } finally {
-            setSaving(false);
-        }
+    try {
+      const result = await bookingApi.getSettings(storeId);
+      setData(result);
+      setForm({
+        bookingOpenTime: result.bookingOpenTime,
+        bookingCloseTime: result.bookingCloseTime,
+        bookingSlotMinutes: result.bookingSlotMinutes,
+        bookingGraceMinutes: result.bookingGraceMinutes,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat pengaturan booking.");
+    } finally {
+      setLoading(false);
     }
+  }, [storeId]);
 
-    async function toggleProduct(product: BookingProduct, bookingEnabled: boolean) {
-        setProducts(prev => prev.map(p => p.id === product.id ? { ...p, bookingEnabled } : p));
-        await fetch(`/api/booking/products/${product.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ bookingEnabled }),
-        });
+  useEffect(() => {
+    if (status === "loading") return;
+    if (!ready) {
+      setLoading(false);
+      return;
     }
+    void load();
+  }, [load, ready, status]);
 
-    async function updateDuration(product: BookingProduct, bookingDurationMin: number | null) {
-        setProducts(prev => prev.map(p => p.id === product.id ? { ...p, bookingDurationMin } : p));
-        await fetch(`/api/booking/products/${product.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ bookingDurationMin }),
-        });
+  const slotPreview = useMemo(() => {
+    if (!form) return [];
+    return buildTimeSlots(form.bookingOpenTime, form.bookingCloseTime, form.bookingSlotMinutes).slice(0, 20);
+  }, [form]);
+
+  async function handleSave() {
+    if (!form || !storeId) return;
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const updated = await bookingApi.updateSettings({ storeId, ...form });
+      setData(updated);
+      setForm({
+        bookingOpenTime: updated.bookingOpenTime,
+        bookingCloseTime: updated.bookingCloseTime,
+        bookingSlotMinutes: updated.bookingSlotMinutes,
+        bookingGraceMinutes: updated.bookingGraceMinutes,
+      });
+      setNotice("Pengaturan booking berhasil disimpan.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan pengaturan booking.");
+    } finally {
+      setSaving(false);
     }
+  }
 
-    // Generate preview slots
-    function previewSlots() {
-        const [oh, om] = settings.bookingOpenTime.split(":").map(Number);
-        const [ch, cm] = settings.bookingCloseTime.split(":").map(Number);
-        const startMin = oh * 60 + om;
-        const endMin = ch * 60 + cm;
-        const slotMin = settings.bookingSlotMinutes;
-        const slots = [];
-        for (let m = startMin; m < endMin; m += slotMin) {
-            const h = Math.floor(m / 60).toString().padStart(2, "0");
-            const min = (m % 60).toString().padStart(2, "0");
-            slots.push(`${h}:${min}`);
-        }
-        return slots;
+  async function updateProduct(
+    product: BookingProduct,
+    payload: { bookingEnabled?: boolean; bookingDurationMin?: number | null }
+  ) {
+    setProductSavingId(product.id);
+    setError("");
+
+    try {
+      await bookingApi.updateProduct(product.id, payload);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              products: current.products.map((entry) =>
+                entry.id === product.id ? { ...entry, ...payload } : entry
+              ),
+            }
+          : current
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengubah pengaturan produk booking.");
+    } finally {
+      setProductSavingId("");
     }
-    const previewList = previewSlots();
+  }
 
-    const enabledProducts = products.filter(p => p.bookingEnabled);
-
+  if (loading) {
     return (
-        <div className="flex h-screen bg-gray-50 overflow-hidden">
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">
-                    <div className="flex items-center gap-3">
-                        <a href="/booking" className="text-gray-400 hover:text-gray-700 transition-colors text-sm">← Dashboard</a>
-                        <span className="text-gray-200">|</span>
-                        <span className="text-sm font-bold text-gray-900">Pengaturan Booking</span>
-                    </div>
-                    <button onClick={saveSettings} disabled={saving}
-                        className="px-5 py-2 text-xs font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors">
-                        {saving ? "Menyimpan..." : "Simpan Pengaturan"}
-                    </button>
-                </header>
-
-                <div className="flex-1 overflow-y-auto p-5">
-                    {loading ? (
-                        <div className="text-center py-16 text-gray-400 text-sm">Memuat pengaturan...</div>
-                    ) : (
-                        <div className="max-w-2xl space-y-5">
-                            {error && <div className="px-4 py-3 bg-red-50 text-red-600 text-sm rounded-xl">{error}</div>}
-                            {savedMsg && <div className="px-4 py-3 bg-emerald-50 text-emerald-700 text-sm rounded-xl font-medium">✓ {savedMsg}</div>}
-
-                            {/* Jam Operasional */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-5">
-                                <div className="flex items-center gap-2 mb-4">
-                                    
-                                    <h2 className="text-sm font-bold text-gray-900">Jam Operasional Booking</h2>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Jam Buka</label>
-                                        <input type="time" value={settings.bookingOpenTime}
-                                            onChange={e => setSettings(s => ({ ...s, bookingOpenTime: e.target.value }))}
-                                            className="w-full px-3 py-2.5 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none focus:border-gray-900" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Jam Tutup</label>
-                                        <input type="time" value={settings.bookingCloseTime}
-                                            onChange={e => setSettings(s => ({ ...s, bookingCloseTime: e.target.value }))}
-                                            className="w-full px-3 py-2.5 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none focus:border-gray-900" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Slot & Grace */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-5">
-                                <div className="flex items-center gap-2 mb-4">
-                                    
-                                    <h2 className="text-sm font-bold text-gray-900">Durasi & Toleransi</h2>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Interval Slot (menit)</label>
-                                        <select value={settings.bookingSlotMinutes}
-                                            onChange={e => setSettings(s => ({ ...s, bookingSlotMinutes: parseInt(e.target.value) }))}
-                                            className="w-full px-3 py-2.5 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none focus:border-gray-900 bg-white">
-                                            {[15, 30, 45, 60, 90, 120].map(v => (
-                                                <option key={v} value={v}>{v} menit</option>
-                                            ))}
-                                        </select>
-                                        <p className="text-[10px] text-gray-400 mt-1">Jarak antar pilihan jam booking</p>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Toleransi Keterlambatan (menit)</label>
-                                        <select value={settings.bookingGraceMinutes}
-                                            onChange={e => setSettings(s => ({ ...s, bookingGraceMinutes: parseInt(e.target.value) }))}
-                                            className="w-full px-3 py-2.5 text-sm text-gray-900 border border-gray-200 rounded-xl outline-none focus:border-gray-900 bg-white">
-                                            {[0, 5, 10, 15, 20, 30].map(v => (
-                                                <option key={v} value={v}>{v === 0 ? "Tidak ada toleransi" : `${v} menit`}</option>
-                                            ))}
-                                        </select>
-                                        <p className="text-[10px] text-gray-400 mt-1">Sebelum booking otomatis jadi no-show</p>
-                                    </div>
-                                </div>
-
-                                {/* Slot preview */}
-                                <div className="mt-4 pt-4 border-t border-gray-100">
-                                    <p className="text-xs font-medium text-gray-500 mb-2">Preview slot yang akan muncul di halaman booking:</p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {previewList.slice(0, 16).map(t => (
-                                            <span key={t} className="px-2.5 py-1 text-[11px] bg-gray-100 text-gray-600 rounded-lg font-mono">{t}</span>
-                                        ))}
-                                        {previewList.length > 16 && (
-                                            <span className="px-2.5 py-1 text-[11px] bg-gray-50 text-gray-400 rounded-lg">+{previewList.length - 16} lainnya</span>
-                                        )}
-                                    </div>
-                                    <p className="text-[10px] text-gray-400 mt-2">Total {previewList.length} slot per hari</p>
-                                </div>
-                            </div>
-
-                            {/* Products for booking */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-5">
-                                <div className="flex items-center justify-between mb-1">
-                                    <div className="flex items-center gap-2">
-                                        
-                                        <h2 className="text-sm font-bold text-gray-900">Produk / Layanan untuk Booking</h2>
-                                    </div>
-                                    <span className="text-xs text-gray-400">{enabledProducts.length} aktif dari {products.length}</span>
-                                </div>
-                                <p className="text-xs text-gray-400 mb-4">Aktifkan produk yang bisa dipilih pelanggan saat booking online. Harga produk = nominal DP jaminan.</p>
-
-                                {products.length === 0 ? (
-                                    <p className="text-sm text-gray-400 py-4 text-center">Belum ada produk. Tambahkan produk di menu Produk terlebih dahulu.</p>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {products.map(p => (
-                                            <div key={p.id} className={`flex items-center gap-4 p-3.5 rounded-xl border transition-all ${p.bookingEnabled ? "border-gray-200 bg-white" : "border-gray-100 bg-gray-50"}`}>
-                                                {/* Toggle */}
-                                                <button onClick={() => toggleProduct(p, !p.bookingEnabled)}
-                                                    className={`relative w-9 h-5 rounded-full flex-shrink-0 transition-colors ${p.bookingEnabled ? "bg-gray-900" : "bg-gray-200"}`}>
-                                                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${p.bookingEnabled ? "left-4" : "left-0.5"}`} />
-                                                </button>
-                                                {/* Info */}
-                                                <div className="flex-1 min-w-0">
-                                                    <p className={`text-sm font-medium truncate ${p.bookingEnabled ? "text-gray-900" : "text-gray-400"}`}>{p.name}</p>
-                                                    <div className="flex items-center gap-2 mt-0.5">
-                                                        {p.category && <span className="text-[10px] text-gray-400">{p.category}</span>}
-                                                        <span className="text-[10px] text-gray-400">DP: {fmtPrice(p.price)}</span>
-                                                    </div>
-                                                </div>
-                                                {/* Duration input — only when enabled */}
-                                                {p.bookingEnabled && (
-                                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                                        <span className="text-[10px] text-gray-400">Durasi:</span>
-                                                        <input
-                                                            type="number" min={5} step={5}
-                                                            value={p.bookingDurationMin ?? ""}
-                                                            onChange={e => updateDuration(p, e.target.value ? parseInt(e.target.value) : null)}
-                                                            placeholder="30"
-                                                            className="w-14 px-2 py-1 text-xs text-gray-900 border border-gray-200 rounded-lg outline-none focus:border-gray-900 text-center"
-                                                        />
-                                                        <span className="text-[10px] text-gray-400">mnt</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Info box */}
-                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                                <p className="text-xs font-semibold text-black mb-2">Info Sistem Booking</p>
-                                <ul className="text-xs text-blue-700 space-y-1.5">
-                                    <li>• Pelanggan booking melalui link: <code className="bg-blue-100 px-1.5 py-0.5 rounded font-mono">/book/[slug-toko-kamu]</code></li>
-                                    <li>• Produk yang diaktifkan otomatis muncul di halaman booking pelanggan</li>
-                                    <li>• Durasi layanan digunakan untuk menghitung slot yang terisi (mencegah double booking)</li>
-                                    <li>• Buffer 10 menit otomatis ditambahkan antar sesi untuk barbershop</li>
-                                    <li>• Slot akan otomatis terkunci jika sudah dipesan (real-time)</li>
-                                </ul>
-                            </div>
-
-                            {/* Save button bottom */}
-                            <button onClick={saveSettings} disabled={saving}
-                                className="w-full py-3.5 text-sm font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-40 transition-all">
-                                {saving ? "Menyimpan..." : "Simpan Semua Pengaturan"}
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
+      <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+        <LoadingState label="Memuat pengaturan booking..." />
+      </div>
     );
+  }
+
+  if (!ready || !data || !form) {
+    return (
+      <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+        {error ? (
+          <ErrorState description={error} retry={() => void load()} />
+        ) : (
+          <EmptyState
+            title="Store belum ditemukan"
+            description="Pastikan akun aktif memiliki store yang bisa diakses untuk mengelola booking."
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-slate-50">
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+        <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <Link href="/booking" className="transition hover:text-slate-900">
+                Booking
+              </Link>
+              <span>/</span>
+              <span>Pengaturan</span>
+            </div>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Booking Settings</h1>
+            <p className="mt-2 text-sm text-slate-500">
+              Kelola jam operasional booking, interval slot, toleransi keterlambatan, dan produk yang bisa dipilih saat
+              reservasi.
+            </p>
+          </div>
+
+          <button
+            disabled={saving}
+            onClick={() => void handleSave()}
+            className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? "Menyimpan..." : "Simpan perubahan"}
+          </button>
+        </div>
+
+        {error ? <ErrorState description={error} retry={() => void load()} /> : null}
+        {notice ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">
+            {notice}
+          </div>
+        ) : null}
+
+        <div className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
+          <SectionCard title="Store Overview" description="Ringkasan data utama store yang akan dipakai frontend booking.">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <InfoItem label="Nama toko" value={data.name} />
+              <InfoItem label="Slug public" value={data.slug} />
+              <InfoItem label="Tipe bisnis" value={data.type} />
+              <InfoItem
+                label="Resource aktif"
+                value={`${data.bookingResources.filter((item) => item.isActive).length} resource`}
+              />
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Preview Slot" description="Slot otomatis mengikuti jam buka dan interval dari backend.">
+            <div className="flex flex-wrap gap-2">
+              {slotPreview.map((slot) => (
+                <span
+                  key={slot}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700"
+                >
+                  {slot}
+                </span>
+              ))}
+            </div>
+            <p className="mt-4 text-xs text-slate-400">
+              Total {buildTimeSlots(form.bookingOpenTime, form.bookingCloseTime, form.bookingSlotMinutes).length} slot per
+              hari.
+            </p>
+          </SectionCard>
+        </div>
+
+        <SectionCard
+          title="Booking Window"
+          description="Pengaturan jam operasional yang dipakai oleh availability checker dan jadwal booking."
+        >
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Field label="Jam buka">
+              <input
+                type="time"
+                value={form.bookingOpenTime}
+                onChange={(event) =>
+                  setForm((current) => (current ? { ...current, bookingOpenTime: event.target.value } : current))
+                }
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+              />
+            </Field>
+            <Field label="Jam tutup">
+              <input
+                type="time"
+                value={form.bookingCloseTime}
+                onChange={(event) =>
+                  setForm((current) => (current ? { ...current, bookingCloseTime: event.target.value } : current))
+                }
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+              />
+            </Field>
+            <Field label="Interval slot (menit)">
+              <input
+                type="number"
+                min={5}
+                step={5}
+                value={form.bookingSlotMinutes}
+                onChange={(event) =>
+                  setForm((current) =>
+                    current
+                      ? {
+                          ...current,
+                          bookingSlotMinutes: Math.max(5, Number(event.target.value) || current.bookingSlotMinutes),
+                        }
+                      : current
+                  )
+                }
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+              />
+            </Field>
+            <Field label="Grace period (menit)">
+              <input
+                type="number"
+                min={0}
+                step={5}
+                value={form.bookingGraceMinutes}
+                onChange={(event) =>
+                  setForm((current) =>
+                    current
+                      ? {
+                          ...current,
+                          bookingGraceMinutes: Math.max(0, Number(event.target.value) || 0),
+                        }
+                      : current
+                  )
+                }
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+              />
+            </Field>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Booking Product Settings"
+          description="Aktifkan hanya produk yang boleh dipilih customer saat membuat booking online."
+        >
+          {data.products.length === 0 ? (
+            <EmptyState
+              title="Belum ada produk"
+              description="Tambahkan produk di menu Produk terlebih dahulu, lalu aktifkan fitur booking per produk di sini."
+            />
+          ) : (
+            <div className="overflow-hidden rounded-3xl border border-slate-200">
+              <div className="hidden grid-cols-[1.3fr_0.8fr_0.8fr_0.8fr_0.8fr] gap-4 bg-slate-50 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 md:grid">
+                <span>Produk</span>
+                <span>Kategori</span>
+                <span>Harga</span>
+                <span>Booking</span>
+                <span>Durasi</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {data.products.map((product) => (
+                  <div
+                    key={product.id}
+                    className="grid gap-4 px-5 py-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_0.8fr_0.8fr] md:items-center"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">{product.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">ID: {product.id}</p>
+                    </div>
+                    <div className="text-sm text-slate-600">{product.category || "-"}</div>
+                    <div className="text-sm font-medium text-slate-900">{formatCurrency(product.price)}</div>
+                    <div className="flex items-center gap-3">
+                      <Toggle
+                        checked={product.bookingEnabled}
+                        disabled={productSavingId === product.id}
+                        onChange={() => void updateProduct(product, { bookingEnabled: !product.bookingEnabled })}
+                      />
+                      <span className="text-sm text-slate-600">{product.bookingEnabled ? "Aktif" : "Nonaktif"}</span>
+                    </div>
+                    <label className="block">
+                      <input
+                        type="number"
+                        min={5}
+                        step={5}
+                        disabled={!product.bookingEnabled || productSavingId === product.id}
+                        value={product.bookingDurationMin ?? ""}
+                        onChange={(event) =>
+                          setData((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  products: current.products.map((entry) =>
+                                    entry.id === product.id
+                                      ? {
+                                          ...entry,
+                                          bookingDurationMin: event.target.value ? Number(event.target.value) : null,
+                                        }
+                                      : entry
+                                  ),
+                                }
+                              : current
+                          )
+                        }
+                        onBlur={(event) =>
+                          void updateProduct(product, {
+                            bookingDurationMin: event.target.value ? Number(event.target.value) : null,
+                          })
+                        }
+                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900 disabled:bg-slate-100"
+                        placeholder="30"
+                      />
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </SectionCard>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-slate-900">{value}</p>
+    </div>
+  );
 }

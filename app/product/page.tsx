@@ -841,7 +841,7 @@ export default function ProdukPage() {
           <input
             type="text" placeholder="Cari nama, SKU, barcode..."
             value={search} onChange={e => setSearch(e.target.value)}
-            className="pl-8 pr-3 py-1.5 text-sm text-black bg-gray-50 border border-gray-100 rounded-lg outline-none focus:border-amber-300 w-52"
+            className="pl-8 pr-3 py-1.5 text-sm text-black bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-amber-300 w-52 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow"
           />
         </div>
 
@@ -860,7 +860,7 @@ export default function ProdukPage() {
         </select>
 
         {/* Stock filter — termasuk deadstock */}
-        <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+        <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
           {([
             ["all", "Semua"], ["ok", "Aman"], ["low", "Menipis"], ["empty", "Habis"], ["deadstock", "tidak laku"],
           ] as [StockFilter, string][]).map(([key, label]) => (
@@ -913,10 +913,10 @@ export default function ProdukPage() {
 
       {/* ── TABLE ── */}
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-100">
+              <tr className="border-b border-gray-500">
                 <th className="px-4 py-3 w-8">
                   <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={toggleAll} className="rounded" />
                 </th>

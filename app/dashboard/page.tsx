@@ -142,7 +142,7 @@ function StockWarningBar({ fastStock, slowStock, deadStock }: {
       {/* Baris ringkas */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 bg-white border border-gray-100 rounded-xl px-4 py-2.5 hover:border-gray-200 transition-colors text-left"
+        className="w-full flex items-center gap-2 bg-white border border-gray-100 rounded-xl px-4 py-2.5 hover:border-gray-200 transition-colors text-left shadow-lg"
       >
         <span className="text-sm">⚠️</span>
         <span className="text-xs text-gray-600 font-medium flex-1">
@@ -346,9 +346,9 @@ export default function DashboardPage() {
   const chartData = salesLabels.map((label, i) => ({ name: label, omzet: salesData[i] }));
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-gray-100 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">
+        <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0 shadow-lg">
           <span className="text-sm font-medium text-gray-900">Dashboard</span>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">
@@ -373,22 +373,22 @@ export default function DashboardPage() {
 
           {/* ── METRIC CARDS (5 kartu) ── */}
           <div className="grid grid-cols-5 gap-3 mb-5">
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
+            <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-lg">
               <p className="text-xs text-gray-400 mb-1">Omzet hari ini</p>
               <p className="text-xl font-medium text-gray-900">{formatRupiah(totalOmzet)}</p>
               <p className="text-xs text-gray-400 mt-1">dari transaksi hari ini</p>
             </div>
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
+            <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-lg">
               <p className="text-xs text-gray-400 mb-1">Transaksi</p>
               <p className="text-xl font-medium text-gray-900">{totalTxn}</p>
               <p className="text-xs text-gray-400 mt-1">transaksi tercatat</p>
             </div>
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
+            <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-lg">
               <p className="text-xs text-gray-400 mb-1">Item terjual</p>
               <p className="text-xl font-medium text-gray-900">{totalItemTerjual}</p>
               <p className="text-xs text-gray-400 mt-1">item hari ini</p>
             </div>
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
+            <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-lg">
               <p className="text-xs text-gray-400 mb-1">Stok hampir habis</p>
               <p className="text-xl font-medium text-gray-900">{stokWarn}</p>
               <p className={`text-xs mt-1 ${stokWarn > 0 ? "text-red-500" : "text-gray-400"}`}>
@@ -396,7 +396,7 @@ export default function DashboardPage() {
               </p>
             </div>
             {/* Keuntungan Bersih Real-time */}
-            <div className={`rounded-xl p-4 border ${netProfit >= 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"}`}>
+            <div className={`rounded-xl p-4 border ${netProfit >= 0 ? "bg-emerald-50 border-emerald-100 shadow-lg" : "bg-red-50 border-red-100 shadow-lg"}`}>
               <p className="text-xs text-gray-400 mb-1">Keuntungan bersih</p>
               <p className={`text-xl font-medium ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>
                 {formatRupiah(Math.abs(netProfit))}
@@ -409,7 +409,7 @@ export default function DashboardPage() {
 
           {/* ── CHART + TRANSAKSI ── */}
           <div className="grid grid-cols-3 gap-3 mb-5">
-            <div className="col-span-2 bg-white rounded-xl p-5 border border-gray-100">
+            <div className="col-span-2 bg-white rounded-xl p-5 border border-gray-100 shadow-lg">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-xs font-medium text-gray-400 tracking-wider mb-5">PENJUALAN 7 HARI TERAKHIR</p>
                 <div className="flex items-center gap-3">
@@ -449,7 +449,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
+            <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-lg">
               <p className="text-xs font-medium text-gray-400 tracking-wider mb-3">TRANSAKSI TERBARU</p>
               {loading ? (
                 <p className="text-xs text-gray-400">Memuat...</p>
@@ -480,7 +480,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-4 gap-3">
 
             {/* Stok Produk */}
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
+            <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-lg">
               <p className="text-xs font-medium text-gray-400 tracking-wider mb-3">STOK PRODUK</p>
               {stockList.length === 0 ? (
                 <p className="text-xs text-gray-400">Belum ada produk.</p>
@@ -504,7 +504,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Produk Paling Laku */}
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
+            <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-lg">
               <p className="text-xs font-medium text-gray-400 tracking-wider mb-1">PRODUK PALING LAKU</p>
               <p className="text-[10px] text-gray-400 mb-3">7 hari terakhir</p>
               {loading ? (
@@ -537,8 +537,8 @@ export default function DashboardPage() {
             </div>
 
             {/* Produk Tidak Laku */}
-            <div className="bg-white rounded-xl p-4 border border-gray-100">
-              <p className="text-xs font-medium text-gray-400 tracking-wider mb-1">PRODUK TIDAK LAKU</p>
+            <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-lg">
+              <p className="text-xs font-medium text-gray-400 tracking-wider mb-1 ">PRODUK TIDAK LAKU</p>
               <p className="text-[10px] text-gray-400 mb-3">7 hari terakhir</p>
               {loading ? (
                 <p className="text-xs text-gray-400">Memuat...</p>
@@ -567,9 +567,9 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => pushWithMode("/kasir")}
-                className="bg-amber-700 text-white rounded-xl p-4 flex items-center gap-3 hover:bg-amber-800 transition-colors text-left"
+                className="bg-amber-700 text-white rounded-xl p-4 flex items-center gap-3 hover:bg-amber-800 transition-colors text-left shadow-lg"
               >
-                <div className="w-8 h-8 bg-amber-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 bg-amber-600 rounded-lg flex items-center justify-center flex-shrink-0 ">
                   <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5}>
                     <rect x="2" y="4" width="12" height="8" rx="1" stroke="white" />
                     <path d="M8 8v2M6 9h4" stroke="white" />
@@ -583,7 +583,7 @@ export default function DashboardPage() {
 
               <button
                 onClick={() => pushWithMode("/product")}
-                className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-3 hover:border-gray-200 transition-colors text-left"
+                className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-3 hover:border-gray-200 transition-colors text-left shadow-lg"
               >
                 <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center flex-shrink-0">
                   <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5}>
@@ -599,7 +599,7 @@ export default function DashboardPage() {
 
               <button
                 onClick={() => pushWithMode("/laporan")}
-                className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-3 hover:border-gray-200 transition-colors text-left"
+                className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-3 hover:border-gray-200 transition-colors text-left shadow-lg"
               >
                 <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center flex-shrink-0">
                   <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5}>

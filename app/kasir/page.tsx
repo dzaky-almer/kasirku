@@ -703,9 +703,9 @@ export default function KasirPage() {
           </header>
 
           {/* Search + Kategori */}
-          <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0">
+          <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0 ">
             <div className="flex-1 relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" viewBox="0 0 16 16" fill="none" strokeWidth={1.5}>
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 " viewBox="0 0 16 16" fill="none" strokeWidth={1.5}>
                 <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
                 <path d="M10.5 10.5L14 14" stroke="currentColor" strokeLinecap="round" />
               </svg>
@@ -714,7 +714,7 @@ export default function KasirPage() {
                 placeholder="Cari menu..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-100 rounded-lg outline-none focus:border-amber-300 transition-colors"
+                className="w-full pl-8 pr-3 py-2 text-sm text-black bg-gray-50 border border-gray-100 rounded-lg outline-none focus:border-amber-300 transition-colors shadow-[0_0_10px_rgba(0,0,0,0.20)]"
               />
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -723,7 +723,7 @@ export default function KasirPage() {
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeCategory === cat
-                    ? "bg-amber-700 text-white"
+                    ? "bg-amber-700 text-white hover:bg-amber-800 shadow-[0_2px_5px_rgba(255,167,38,0.4)] hover:shadow-[0_4px_15px_rgba(255,167,38,0.4)]"
                     : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                     }`}
                 >
@@ -750,7 +750,7 @@ export default function KasirPage() {
                       key={product.id}
                       onClick={() => addToCart(product)}
                       disabled={product.stock === 0}
-                      className={`bg-white border rounded-xl overflow-hidden text-left hover:border-amber-300 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${inCart ? "border-amber-400" : "border-gray-100"
+                      className={`bg-white shadow-[0_0_5px_rgba(0,0,0,0.15)] hover:shadow-amber-100 border rounded-xl overflow-hidden text-left hover:border-amber-300 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${inCart ? "border-amber-400" : "border-gray-100"
                         }`}
                     >
                       <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
@@ -781,7 +781,7 @@ export default function KasirPage() {
         </div>
 
         {/* ── CART SIDEBAR ─────────────────────────────────── */}
-        <aside className="w-80 bg-white border-l border-gray-100 flex flex-col flex-shrink-0">
+        <aside className="w-80 bg-white border-l border-gray-300 flex flex-col flex-shrink-0">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-900">Pesanan</span>
             <div className="flex items-center gap-3">
@@ -912,7 +912,7 @@ export default function KasirPage() {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => updateQty(item.id, -1)}
-                        className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 text-sm font-medium transition-colors"
+                        className="w-6 h-6 rounded-md bg-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-400 text-sm font-medium transition-colors"
                       >
                         −
                       </button>
@@ -921,11 +921,11 @@ export default function KasirPage() {
                         min="0"
                         value={item.qty}
                         onChange={(e) => setQtyDirect(item.id, e.target.value)}
-                        className="w-8 h-6 text-center text-xs font-medium text-gray-800 border border-gray-200 rounded outline-none focus:border-amber-400"
+                        className="w-8 h-6 text-center text-xs font-medium text-gray-800 border border-gray-400 rounded outline-none focus:border-amber-400"
                       />
                       <button
                         onClick={() => updateQty(item.id, 1)}
-                        className="w-6 h-6 rounded-md bg-amber-100 flex items-center justify-center text-amber-800 hover:bg-amber-200 text-sm font-medium transition-colors"
+                        className="w-6 h-6 rounded-md bg-amber-400 flex items-center justify-center text-black hover:bg-amber-500 text-sm font-medium transition-colors"
                       >
                         +
                       </button>
@@ -935,7 +935,7 @@ export default function KasirPage() {
                     </span>
                     <button
                       onClick={() => removeFromCart(item.id)}
-                      className="ml-1 p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
+                      className="ml-1 p-1 rounded text-red-200 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
                     >
                       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
                         <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeLinecap="round" />
@@ -960,7 +960,7 @@ export default function KasirPage() {
                 </div>
 
                 {/* ── PROMO SECTION ──────────────────────── */}
-                <div className="pt-2 border-t border-gray-50">
+                <div className="pt-2 border-t border-gray-700">
                   <button
                     onClick={() => setShowPromoPanel((v) => !v)}
                     className="w-full flex items-center justify-between py-1.5 text-xs text-gray-500 hover:text-amber-700 transition-colors"
@@ -989,8 +989,8 @@ export default function KasirPage() {
                           <button
                             onClick={() => { setSelectedPromo(null); setShowPromoPanel(false); }}
                             className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${!selectedPromo
-                              ? "bg-amber-50 text-amber-700 font-medium"
-                              : "text-gray-500 hover:bg-white"
+                              ? "bg-amber-50 text-amber-700 font-medium hover:bg-amber-100 hover:shadow-[0_0_5px_rgba(255,167,38,0.3)]"
+                              : "text-gray-500 hover:bg-white hover:shadow-[0_0_5px_rgba(255,167,38,0.3)]"
                               }`}
                           >
                             Tanpa promo
@@ -1006,8 +1006,8 @@ export default function KasirPage() {
                                 key={promo.id}
                                 onClick={() => { setSelectedPromo(promo); setShowPromoPanel(false); }}
                                 className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors ${isSelected
-                                  ? "bg-amber-50 border border-amber-200"
-                                  : "hover:bg-white border border-transparent"
+                                  ? "bg-amber-50 border border-amber-200 hover:shadow-[0_0_5px_rgba(255,167,38,0.3)]"
+                                  : "hover:bg-white border border-transparent hover:shadow-[0_0_15px_rgba(255,167,38,0.3)]"
                                   }`}
                               >
                                 <div className="flex justify-between items-start">
@@ -1055,10 +1055,10 @@ export default function KasirPage() {
                     onClick={() => setPaymentMethod("cash")}
                     className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${paymentMethod === "cash"
                       ? "bg-amber-700 text-white border-amber-700"
-                      : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                      : "bg-white text-gray-500 border-gray-200 hover:border-gray-30 hover:shadow-[0_0_5px_rgba(255,167,38,0.3)]"
                       }`}
                   >
-                    💵 Cash
+                    Cash
                   </button>
                   <button
                     onClick={() => setPaymentMethod("qris")}
@@ -1067,7 +1067,7 @@ export default function KasirPage() {
                       : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
                       }`}
                   >
-                    📱 QRIS
+                    QRIS
                   </button>
                 </div>
               </div>

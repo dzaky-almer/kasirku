@@ -15,13 +15,6 @@ declare module "next-auth" {
   }
 }
 
-declare module "next-auth/jwt" {
-  interface JWT {
-    id?: string;
-    storeId?: string | null;
-  }
-}
-
 type AuthUser = {
   id: string;
   name?: string | null;
@@ -65,19 +58,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, user }) {
+      const mutableToken = token as typeof token & {
+        id?: string;
+        storeId?: string | null;
+      };
       if (user) {
         const authUser = user as AuthUser;
-        token.id = authUser.id;
-        token.name = authUser.name;
-        token.storeId = authUser.storeId ?? null;
+        mutableToken.id = authUser.id;
+        mutableToken.name = authUser.name;
+        mutableToken.storeId = authUser.storeId ?? null;
       }
-      return token;
+      return mutableToken;
     },
     async session({ session, token }) {
+      const sessionToken = token as typeof token & {
+        id?: string;
+        storeId?: string | null;
+        name?: string | null;
+      };
       if (token) {
-        session.user.id = token.id as string;
-        session.user.name = (token.name as string | null | undefined) ?? session.user.name;
-        session.user.storeId = token.storeId ?? undefined;
+        session.user.id = sessionToken.id as string;
+        session.user.name = sessionToken.name ?? session.user.name;
+        session.user.storeId = typeof sessionToken.storeId === "string" ? sessionToken.storeId : undefined;
       }
       return session;
     },

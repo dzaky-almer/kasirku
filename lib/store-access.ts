@@ -10,6 +10,7 @@ export async function canAccessStore(storeId: string, userId?: string | null) {
     },
     select: {
       id: true,
+      isDemo: true,
       userId: true,
       type: true,
       bookingGraceMinutes: true,

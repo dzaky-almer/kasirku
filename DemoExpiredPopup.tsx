@@ -6,14 +6,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSearchParams, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { ensureDemoSession, getDemoDurationMs, persistDemoMeta, readDemoMeta, useDemoMode } from "@/lib/demo";
 
 const PUBLIC_PATHS = new Set(["/", "/home", "/login", "/register", "/admin/activate"]);
 
 // ── HOOK: useDemoTimer ─────────────────────────────────────────
 export function useDemoTimer() {
-  useSearchParams();
   const { isDemoMode, demoMeta } = useDemoMode();
 
   const [expired, setExpired] = useState(false);

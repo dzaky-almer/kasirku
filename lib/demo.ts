@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useSyncExternalStore } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 export const DEMO_SESSION_KEY = "tokoku_demo_session";
 export const DEMO_META_KEY = "tokoku_demo_meta";
@@ -148,10 +147,24 @@ export async function ensureDemoSession(existingSessionKey?: string | null): Pro
 }
 
 export function useDemoMode() {
-  const searchParams = useSearchParams();
   const demoMeta = useSyncExternalStore(subscribeDemoMeta, readDemoMeta, () => null);
+  const [hasDemoQuery, setHasDemoQuery] = useState(false);
 
-  const hasDemoQuery = searchParams.get("demo") === "true";
+  useEffect(() => {
+    if (!hasStorage()) return;
+
+    const syncQuery = () => {
+      const params = new URLSearchParams(window.location.search);
+      setHasDemoQuery(params.get("demo") === "true");
+    };
+
+    syncQuery();
+    window.addEventListener("popstate", syncQuery);
+
+    return () => {
+      window.removeEventListener("popstate", syncQuery);
+    };
+  }, []);
 
   useEffect(() => {
     // Tidak ada ?demo=true DAN tidak ada sesi tersimpan → skip
@@ -179,7 +192,7 @@ export function useDemoMode() {
     return () => {
       cancelled = true;
     };
-  }, [demoMeta?.sessionKey, hasDemoQuery, searchParams]);
+  }, [demoMeta?.sessionKey, hasDemoQuery]);
 
   // isDemoMode aktif selama ada sessionKey di localStorage
   const isDemoMode = Boolean(demoMeta?.sessionKey) || hasDemoQuery;

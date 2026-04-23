@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { getDateRangeForDay } from "@/lib/date";
 import { canAccessStore } from "@/lib/store-access";
+import { createStockMovement } from "@/lib/inventory";
 
 interface CartItemInput {
   productId: string;
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      const draftReferenceId = crypto.randomUUID();
       const store = await canAccessStore(storeId, userId);
 
       if (!store) {
@@ -78,20 +80,17 @@ export async function POST(req: Request) {
       }
 
       for (const item of cartItems) {
-        const res = await tx.product.updateMany({
-          where: {
-            id: item.productId,
-            storeId,
-            stock: { gte: item.qty },
-          },
-          data: {
-            stock: { decrement: item.qty },
-          },
+        await createStockMovement(tx, {
+          storeId,
+          productId: item.productId,
+          type: "OUT",
+          reason: "SALE",
+          qtyChange: -item.qty,
+          createdById: userId ?? null,
+          referenceType: "TRANSACTION_DRAFT",
+          referenceId: draftReferenceId,
+          note: "Pengurangan stok dari transaksi kasir",
         });
-
-        if (res.count === 0) {
-          throw new Error("Stok produk tidak cukup / sudah habis");
-        }
       }
 
       if (promoId) {
@@ -131,6 +130,24 @@ export async function POST(req: Request) {
         },
         include: { items: true },
       });
+
+      await Promise.all(
+        cartItems.map((item) =>
+          tx.stockMovement.updateMany({
+            where: {
+              storeId,
+              productId: item.productId,
+              reason: "SALE",
+              referenceType: "TRANSACTION_DRAFT",
+              referenceId: draftReferenceId,
+            },
+            data: {
+              referenceType: "TRANSACTION",
+              referenceId: transaction.id,
+            },
+          })
+        )
+      );
 
       if (promoId) {
         await tx.promo.update({

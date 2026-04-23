@@ -39,6 +39,16 @@ const navItems = [
     ),
   },
   {
+    label: "Supplier",
+    href: "/suppliers",
+    icon: (
+      <>
+        <path d="M3 13v-1a2 2 0 012-2h6a2 2 0 012 2v1" stroke="currentColor" />
+        <circle cx="8" cy="5" r="2.5" stroke="currentColor" />
+      </>
+    ),
+  },
+  {
     label: "Laporan",
     href: "/laporan",
     icon: (

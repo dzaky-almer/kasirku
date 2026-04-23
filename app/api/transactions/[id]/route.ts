@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { canAccessStore } from "@/lib/store-access";
+import { createStockMovement } from "@/lib/inventory";
 
 export async function PATCH(
   req: Request,
@@ -56,11 +57,16 @@ export async function PATCH(
 
   const updated = await prisma.$transaction(async (tx) => {
     for (const item of existing.items) {
-      await tx.product.update({
-        where: { id: item.productId },
-        data: {
-          stock: { increment: item.qty },
-        },
+      await createStockMovement(tx, {
+        storeId: existing.storeId,
+        productId: item.productId,
+        type: "IN",
+        reason: action === "VOID" ? "VOID" : "REFUND",
+        qtyChange: item.qty,
+        createdById: userId ?? null,
+        referenceType: "TRANSACTION",
+        referenceId: existing.id,
+        note: reason,
       });
     }
 

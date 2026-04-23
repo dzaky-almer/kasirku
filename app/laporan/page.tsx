@@ -65,9 +65,15 @@ interface SlowProduct {
   productId: string;
   name: string;
   stock: number;
+  supplierId?: string | null;
+  supplierName?: string | null;
   lastSoldAt: string | null;
   daysSinceLastSold: number | null;
   totalSoldThisPeriod: number;
+}
+interface SupplierOption {
+  id: string;
+  name: string;
 }
 interface DailyChart {
   date: string;
@@ -427,25 +433,31 @@ function ProdukLakuTab({ topProducts, transactions, dateFrom, dateTo }: {
 }
 
 // ── FITUR 2: Analisis Barang Lambat ───────────────────────────
-function BarangLambatTab({ slowProducts, dateFrom, dateTo }: {
+function BarangLambatTab({ slowProducts, suppliers, supplierFilter, onSupplierFilterChange, dateFrom, dateTo }: {
   slowProducts: SlowProduct[];
+  suppliers: SupplierOption[];
+  supplierFilter: string;
+  onSupplierFilterChange: (value: string) => void;
   dateFrom: string;
   dateTo: string;
 }) {
   const [sortBy, setSortBy] = useState<"days" | "stock" | "sold">("days");
+  const filteredProducts = supplierFilter === "all"
+    ? slowProducts
+    : slowProducts.filter((product) => product.supplierId === supplierFilter);
 
-  const sorted = [...slowProducts].sort((a, b) => {
+  const sorted = [...filteredProducts].sort((a, b) => {
     if (sortBy === "days") return (b.daysSinceLastSold ?? 9999) - (a.daysSinceLastSold ?? 9999);
     if (sortBy === "stock") return b.stock - a.stock;
     return a.totalSoldThisPeriod - b.totalSoldThisPeriod;
   });
 
-  const kritisCount = slowProducts.filter(p => (p.daysSinceLastSold ?? 0) > 30).length;
-  const waspasCount = slowProducts.filter(p => {
+  const kritisCount = filteredProducts.filter(p => (p.daysSinceLastSold ?? 0) > 30).length;
+  const waspasCount = filteredProducts.filter(p => {
     const d = p.daysSinceLastSold ?? 0;
     return d >= 14 && d <= 30;
   }).length;
-  const totalStock = slowProducts.reduce((s, p) => s + p.stock, 0);
+  const totalStock = filteredProducts.reduce((s, p) => s + p.stock, 0);
 
   function statusBadge(p: SlowProduct) {
     const d = p.daysSinceLastSold ?? 999;
@@ -481,12 +493,25 @@ function BarangLambatTab({ slowProducts, dateFrom, dateTo }: {
           <h2 className="text-sm font-semibold text-gray-900">Analisis Barang Perputaran Lambat</h2>
           <p className="text-xs text-gray-400 mt-0.5">Produk yang jarang atau belum terjual dalam periode ini</p>
         </div>
+        <select
+          value={supplierFilter}
+          onChange={(event) => onSupplierFilterChange(event.target.value)}
+          className="px-3 py-2 text-xs text-gray-700 border border-gray-200 rounded-lg bg-white outline-none focus:border-amber-400"
+        >
+          <option value="all">Semua supplier</option>
+          {suppliers.map((supplier) => (
+            <option key={supplier.id} value={supplier.id}>
+              {supplier.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         {[
-          { label: "Total produk lambat", value: slowProducts.length, sub: "produk", color: "text-gray-800" },
+          { label: "Total produk lambat", value: filteredProducts.length, sub: "produk", color: "text-gray-800" },
+          { label: "Supplier aktif", value: new Set(filteredProducts.map((p) => p.supplierId).filter(Boolean)).size, sub: "supplier", color: "text-emerald-600" },
           { label: "Status kritis (>30 hari)", value: kritisCount, sub: "tidak terjual", color: "text-red-600" },
           { label: "Perlu diwaspadai", value: waspasCount, sub: "14–30 hari", color: "text-amber-600" },
           { label: "Total stok tertahan", value: totalStock.toLocaleString("id-ID"), sub: "unit", color: "text-blue-600" },
@@ -499,11 +524,11 @@ function BarangLambatTab({ slowProducts, dateFrom, dateTo }: {
         ))}
       </div>
 
-      {slowProducts.length === 0 ? (
+      {filteredProducts.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
           <p className="text-2xl mb-2">✅</p>
           <p className="text-gray-600 text-sm font-medium">Semua produk berputar dengan baik!</p>
-          <p className="text-gray-400 text-xs mt-1">Tidak ada produk dengan perputaran lambat pada periode ini.</p>
+          <p className="text-gray-400 text-xs mt-1">Tidak ada produk dengan perputaran lambat pada filter ini.</p>
         </div>
       ) : (
         <>
@@ -572,7 +597,12 @@ function BarangLambatTab({ slowProducts, dateFrom, dateTo }: {
                   const badge = statusBadge(p);
                   return (
                     <tr key={p.productId} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-sm text-gray-800 font-medium">{p.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-800 font-medium">
+                        <div>
+                          <p>{p.name}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{p.supplierName ?? "Tanpa supplier"}</p>
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-700">{p.stock.toLocaleString("id-ID")} unit</td>
                       <td className="px-4 py-3 text-xs text-gray-500">
                         {p.lastSoldAt
@@ -1144,6 +1174,8 @@ export default function LaporanPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
   const [slowProducts, setSlowProducts] = useState<SlowProduct[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
+  const [supplierFilter, setSupplierFilter] = useState("all");
   const [dailyChart, setDailyChart] = useState<DailyChart[]>([]);
   const [hourChart, setHourChart] = useState<HourChart[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1181,6 +1213,19 @@ export default function LaporanPage() {
         if (!Array.isArray(stores)) return;
         const activeStore = stores.find((store) => store.id === storeId);
         if (activeStore?.name) setStoreName(activeStore.name);
+      })
+      .catch(() => {});
+  }, [storeId, status]);
+
+  useEffect(() => {
+    if (status === "loading" || !storeId) return;
+
+    fetch(`/api/suppliers?storeId=${storeId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setSuppliers(data);
+        }
       })
       .catch(() => {});
   }, [storeId, status]);
@@ -1780,7 +1825,14 @@ export default function LaporanPage() {
 
           {/* TAB: BARANG LAMBAT */}
           {activeTab === "barangLambat" && (
-            <BarangLambatTab slowProducts={slowProducts} dateFrom={dateFrom} dateTo={dateTo} />
+            <BarangLambatTab
+              slowProducts={slowProducts}
+              suppliers={suppliers}
+              supplierFilter={supplierFilter}
+              onSupplierFilterChange={setSupplierFilter}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+            />
           )}
 
           {/* TAB: AUDIT */}

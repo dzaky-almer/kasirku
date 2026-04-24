@@ -72,7 +72,8 @@ const navItems = [
     href: "/laporans",
     icon: (
       <>
-        <path d="M2 13V6l3-3 3 3 3-2 3 2v7M2 13h12" stroke="currentColor" />
+        <rect x="3" y="2" width="10" height="12" rx="1" stroke="currentColor" />
+        <path d="M5 5h6M5 7.5h6M5 10h4" stroke="currentColor" strokeLinecap="round" />
       </>
     ),
   },
@@ -135,10 +136,12 @@ export default function Sidebar() {
   const withMode = (href: string) => (isDemoMode ? `${href}?demo=true` : href);
 
   return (
-    <aside className="group flex h-full w-16 flex-shrink-0 flex-col gap-1 overflow-hidden border-r border-gray-100 bg-white px-3 py-4 transition-[width] duration-300 ease-out hover:w-56">
+    <aside className="group flex h-full w-16 flex-shrink-0 flex-col overflow-hidden border-r border-gray-100 bg-white px-3 py-4 transition-[width] duration-300 ease-out hover:w-56">
+
+      {/* Logo */}
       <Link
         href={withMode("/dashboard")}
-        className="mb-3 flex items-center gap-3 rounded-xl px-2 py-1.5"
+        className="mb-3 flex flex-shrink-0 items-center gap-3 rounded-xl px-2 py-1.5"
         title="KasirKu"
       >
         <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-700 shadow-sm">
@@ -154,82 +157,87 @@ export default function Sidebar() {
         </div>
       </Link>
 
-      {navItems.map((nav) => {
-        const isActive = pathname === nav.href;
-        return (
+      {/* Nav items — scrollable */}
+      <div className="flex flex-1 flex-col gap-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        {navItems.map((nav) => {
+          const isActive = pathname === nav.href;
+          return (
+            <Link
+              key={nav.label}
+              href={withMode(nav.href)}
+              title={nav.label}
+              className={`flex flex-shrink-0 items-center gap-3 rounded-xl px-2 py-2.5 transition-all ${
+                isActive
+                  ? "bg-amber-50 text-amber-800"
+                  : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+              }`}
+            >
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
+                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" strokeWidth={1.5}>
+                  {nav.icon}
+                </svg>
+              </span>
+              <span className="whitespace-nowrap text-sm font-medium -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
+                {nav.label}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Footer — selalu nempel di bawah */}
+      <div className="mt-2 flex flex-shrink-0 flex-col gap-1 border-t border-gray-100 pt-2">
+        {isDemoMode ? (
           <Link
-            key={nav.label}
-            href={withMode(nav.href)}
-            title={nav.label}
-            className={`flex items-center gap-3 rounded-xl px-2 py-2.5 transition-all ${
-              isActive
-                ? "bg-amber-50 text-amber-800"
-                : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
-            }`}
+            href="/home"
+            onClick={() => clearDemoMeta()}
+            title="Keluar Demo"
+            className="flex items-center gap-3 rounded-xl px-2 py-2.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
           >
             <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
               <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" strokeWidth={1.5}>
-                {nav.icon}
+                <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" strokeLinecap="round" />
+                <path d="M10 11l3-3-3-3M13 8H6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
             <span className="whitespace-nowrap text-sm font-medium -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
-              {nav.label}
+              Keluar Demo
             </span>
           </Link>
-        );
-      })}
+        ) : (
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            title="Keluar"
+            className="flex items-center gap-3 rounded-xl px-2 py-2.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+          >
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" strokeWidth={1.5}>
+                <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" strokeLinecap="round" />
+                <path d="M10 11l3-3-3-3M13 8H6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span className="whitespace-nowrap text-sm font-medium -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
+              Keluar
+            </span>
+          </button>
+        )}
 
-      <div className="flex-1" />
-
-      {isDemoMode ? (
-        <Link
-          href="/home"
-          onClick={() => clearDemoMeta()}
-          title="Keluar Demo"
-          className="mb-2 flex items-center gap-3 rounded-xl px-2 py-2.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
-        >
-          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
-            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" strokeWidth={1.5}>
-              <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" strokeLinecap="round" />
-              <path d="M10 11l3-3-3-3M13 8H6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-          <span className="whitespace-nowrap text-sm font-medium -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
-            Keluar Demo
-          </span>
-        </Link>
-      ) : (
-        <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          title="Keluar"
-          className="mb-2 flex items-center gap-3 rounded-xl px-2 py-2.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
-        >
-          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
-            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" strokeWidth={1.5}>
-              <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" strokeLinecap="round" />
-              <path d="M10 11l3-3-3-3M13 8H6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-          <span className="whitespace-nowrap text-sm font-medium -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
-            Keluar
-          </span>
-        </button>
-      )}
-
-      <div className="flex items-center gap-3 rounded-xl px-2 py-1.5">
-        <div
-          title={isDemoMode ? "Akun Demo" : email}
-          className="flex h-8 w-8 flex-shrink-0 cursor-default select-none items-center justify-center rounded-full bg-amber-100 text-[10px] font-medium text-amber-800"
-        >
-          {isDemoMode ? "DM" : initials}
-        </div>
-        <div className="min-w-0 -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
-          <p className="whitespace-nowrap text-xs font-medium text-gray-700">{isDemoMode ? "Akun Demo" : initials}</p>
-          <p className="max-w-[140px] truncate text-[11px] text-gray-400">
-            {isDemoMode ? "Mode percobaan aktif" : email}
-          </p>
+        <div className="flex items-center gap-3 rounded-xl px-2 py-1.5">
+          <div
+            title={isDemoMode ? "Akun Demo" : email}
+            className="flex h-8 w-8 flex-shrink-0 cursor-default select-none items-center justify-center rounded-full bg-amber-100 text-[10px] font-medium text-amber-800"
+          >
+            {isDemoMode ? "DM" : initials}
+          </div>
+          <div className="min-w-0 -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
+            <p className="whitespace-nowrap text-xs font-medium text-gray-700">{isDemoMode ? "Akun Demo" : initials}</p>
+            <p className="max-w-[140px] truncate text-[11px] text-gray-400">
+              {isDemoMode ? "Mode percobaan aktif" : email}
+            </p>
+          </div>
         </div>
       </div>
+
     </aside>
   );
 }

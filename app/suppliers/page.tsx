@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { PlanPageGate } from "@/components/PlanPageGate";
 import { useDemoMode } from "@/lib/demo";
+import { usePlanAccess } from "@/lib/use-plan-access";
 
 interface SessionUser {
   storeId?: string;
@@ -58,6 +60,7 @@ export default function SuppliersPage() {
   const { data: session } = useSession();
   const { demoStoreId, isDemoMode } = useDemoMode();
   const sessionUser = (session?.user ?? {}) as SessionUser;
+  const { loading: planLoading, hasFeatureAccess } = usePlanAccess("supplier");
   const storeId = isDemoMode ? demoStoreId : sessionUser.storeId ?? "";
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -243,6 +246,9 @@ export default function SuppliersPage() {
 
   const activeCount = suppliers.filter((supplier) => supplier.isActive).length;
   const totalProducts = suppliers.reduce((sum, supplier) => sum + (supplier._count?.products ?? 0), 0);
+
+  if (planLoading) return <PlanPageGate feature="supplier" featureName="Supplier" />;
+  if (!hasFeatureAccess) return <PlanPageGate feature="supplier" featureName="Supplier" />;
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 p-6">

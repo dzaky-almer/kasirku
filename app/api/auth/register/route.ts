@@ -4,6 +4,18 @@ import bcrypt from "bcryptjs";
 import { validateRegistrationEmail, validateWhatsappNumber } from "@/lib/register-validation";
 import { generateUniqueStoreSlug } from "@/lib/slug";
 
+function toStorePlan(plan?: string): "BASIC" | "PRO" | "ULTRA" {
+  switch (plan?.trim().toLowerCase()) {
+    case "pro":
+      return "PRO";
+    case "ultra":
+      return "ULTRA";
+    case "starter":
+    default:
+      return "BASIC";
+  }
+}
+
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
 
@@ -101,6 +113,7 @@ export async function POST(req: Request) {
   const expiredAt = new Date();
   expiredAt.setDate(expiredAt.getDate() + codeRecord.durationDays);
   const storeSlug = await generateUniqueStoreSlug(storeName);
+  const storePlan = toStorePlan(codeRecord.plan);
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -115,6 +128,8 @@ export async function POST(req: Request) {
               name: storeName.trim(),
               slug: storeSlug,
               type: storeType?.trim() || "cafe",
+              plan: storePlan,
+              planExpiresAt: storePlan === "BASIC" ? null : expiredAt,
               address: storeAddress?.trim() || null,
               waNumber: cleanWaNumber.normalized || null,
               midtransServerKey: midtransServerKey?.trim() || null,
@@ -128,7 +143,7 @@ export async function POST(req: Request) {
       const subscription = await tx.subscription.create({
         data: {
           userId: user.id,
-          plan: codeRecord.plan,
+          plan: storePlan,
           tier: codeRecord.tier,
           startDate: new Date(),
           expiredAt,

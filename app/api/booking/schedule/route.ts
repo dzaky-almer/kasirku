@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 import { canAccessStore } from "@/lib/store-access";
 import { syncOverdueBookings } from "@/lib/booking";
 
-export async function GET(req: Request) {
+const getHandler = async (req: Request) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { searchParams } = new URL(req.url);
@@ -49,4 +50,6 @@ export async function GET(req: Request) {
     resources,
     bookings,
   });
-}
+};
+
+export const GET = withPlanGuard("booking")(getHandler);

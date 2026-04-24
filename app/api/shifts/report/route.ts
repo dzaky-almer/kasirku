@@ -1,7 +1,12 @@
+import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 import { formatDateInput, getDateRangeForDay } from "@/lib/date";
+import { canAccessStore } from "@/lib/store-access";
 
-export async function GET(req: Request) {
+const getHandler = async (req: Request) => {
+  const session = await auth();
+  const userId = session?.user?.id;
   const { searchParams } = new URL(req.url);
 
   const storeId  = searchParams.get("storeId");
@@ -16,10 +21,19 @@ export async function GET(req: Request) {
   const start = getDateRangeForDay(from).start;
   const end = getDateRangeForDay(to).end;
 
+  if (!storeId) {
+    return Response.json({ error: "storeId wajib diisi" }, { status: 400 });
+  }
+
+  const store = await canAccessStore(storeId, userId);
+  if (!store) {
+    return Response.json({ error: "Unauthorized" }, { status: 403 });
+  }
+
   const shifts = await prisma.shift.findMany({
     where: {
       opened_at: { gte: start, lte: end },
-      ...(storeId && { storeId }),
+      storeId,
     },
     include: { user: true },
     orderBy: [
@@ -39,4 +53,6 @@ export async function GET(req: Request) {
     shifts,
     summary: { total_sales, total_transactions },
   });
-}
+};
+
+export const GET = withPlanGuard("laporan_shift")(getHandler);

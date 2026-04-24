@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 import { canAccessStore } from "@/lib/store-access";
 
-export async function GET(
+const getHandler = async (
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { id } = await params;
@@ -50,12 +51,12 @@ export async function GET(
   }
 
   return NextResponse.json(supplier);
-}
+};
 
-export async function PATCH(
+const patchHandler = async (
   req: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { id } = await params;
@@ -88,12 +89,12 @@ export async function PATCH(
   });
 
   return NextResponse.json(supplier);
-}
+};
 
-export async function DELETE(
+const deleteHandler = async (
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { id } = await params;
@@ -125,4 +126,8 @@ export async function DELETE(
   await prisma.supplier.delete({ where: { id } });
 
   return NextResponse.json({ success: true });
-}
+};
+
+export const GET = withPlanGuard("supplier")(getHandler);
+export const PATCH = withPlanGuard("supplier")(patchHandler);
+export const DELETE = withPlanGuard("supplier")(deleteHandler);

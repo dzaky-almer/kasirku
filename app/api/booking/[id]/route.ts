@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 
 async function getAuthorizedBooking(id: string, userId?: string | null) {
@@ -23,10 +24,10 @@ async function getAuthorizedBooking(id: string, userId?: string | null) {
   return booking;
 }
 
-export async function GET(
+const getHandler = async (
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { id } = await params;
@@ -37,12 +38,12 @@ export async function GET(
   }
 
   return NextResponse.json(booking);
-}
+};
 
-export async function PATCH(
+const patchHandler = async (
   req: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { id } = await params;
@@ -80,4 +81,7 @@ export async function PATCH(
   });
 
   return NextResponse.json(updated);
-}
+};
+
+export const GET = withPlanGuard("booking")(getHandler);
+export const PATCH = withPlanGuard("booking")(patchHandler);

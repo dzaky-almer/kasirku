@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 
-export async function PATCH(
+const patchHandler = async (
   req: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { id } = await params;
@@ -50,12 +51,12 @@ export async function PATCH(
   });
 
   return NextResponse.json(updated);
-}
+};
 
-export async function DELETE(
+const deleteHandler = async (
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { id } = await params;
@@ -79,4 +80,7 @@ export async function DELETE(
 
   await prisma.bookingResource.delete({ where: { id } });
   return NextResponse.json({ success: true });
-}
+};
+
+export const PATCH = withPlanGuard("booking")(patchHandler);
+export const DELETE = withPlanGuard("booking")(deleteHandler);

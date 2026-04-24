@@ -6,6 +6,12 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Plan {
+  BASIC
+  PRO
+  ULTRA
+}
+
 model User {
   id           String        @id @default(uuid())
   email        String        @unique
@@ -25,6 +31,8 @@ model Store {
   slug         String?       @unique
   type         String
   userId       String
+  plan         Plan          @default(BASIC)
+  planExpiresAt DateTime?
   bookingGraceMinutes Int    @default(30)
   bookingOpenTime String     @default("09:00")
   bookingCloseTime String    @default("21:00")

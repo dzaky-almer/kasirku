@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureStorePlanAccessBySlug } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 import {
   bookingTimeOverlaps,
@@ -22,6 +23,8 @@ export async function GET(
 ) {
   try {
     const { slug } = await params;
+    const access = await ensureStorePlanAccessBySlug(slug, "booking");
+    if (!access.ok) return access.response;
     const { searchParams } = new URL(req.url);
     const bookingDate = searchParams.get("date");
     const resourceId = searchParams.get("resourceId");

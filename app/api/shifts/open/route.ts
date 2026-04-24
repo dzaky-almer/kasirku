@@ -1,8 +1,9 @@
 import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 import { canAccessStore } from "@/lib/store-access";
 
-export async function POST(req: Request) {
+const postHandler = async (req: Request) => {
   try {
     const session = await auth();
     const sessionUserId = session?.user?.id;
@@ -70,4 +71,6 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
+};
+
+export const POST = withPlanGuard("shift")(postHandler);

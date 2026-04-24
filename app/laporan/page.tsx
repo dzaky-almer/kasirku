@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { PlanPageGate } from "@/components/PlanPageGate";
+import { usePlanAccess } from "@/lib/use-plan-access";
 import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -1159,6 +1161,7 @@ function PajakTab({ summary, topProducts, transactions, dateFrom, dateTo }: {
 // ── Main Page ──────────────────────────────────────────────────
 export default function LaporanPage() {
   const { data: session, status } = useSession();
+  const { loading: planLoading, hasFeatureAccess } = usePlanAccess("laporan_produk");
   const { demoStoreId, isDemoMode } = useDemoMode();
   const storeId = isDemoMode
     ? demoStoreId
@@ -1500,6 +1503,9 @@ export default function LaporanPage() {
     { key: "audit", icon: "", label: "Audit" },
     { key: "pajak", icon: "", label: "Pajak & Keuangan" },
   ];
+
+  if (planLoading) return <PlanPageGate feature="laporan_produk" featureName="Laporan Produk" />;
+  if (!hasFeatureAccess) return <PlanPageGate feature="laporan_produk" featureName="Laporan Produk" />;
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">

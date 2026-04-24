@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueStoreSlug } from "@/lib/slug";
 import { canAccessStore } from "@/lib/store-access";
@@ -37,7 +38,7 @@ const bookingSettingsSelect = {
   },
 } as const;
 
-export async function GET(req: Request) {
+const getHandler = async (req: Request) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { searchParams } = new URL(req.url);
@@ -79,9 +80,9 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json(settings);
-}
+};
 
-export async function PATCH(req: Request) {
+const patchHandler = async (req: Request) => {
   const session = await auth();
   const userId = session?.user?.id;
   const body = await req.json().catch(() => null);
@@ -127,4 +128,7 @@ export async function PATCH(req: Request) {
   });
 
   return NextResponse.json(updated);
-}
+};
+
+export const GET = withPlanGuard("booking")(getHandler);
+export const PATCH = withPlanGuard("booking")(patchHandler);

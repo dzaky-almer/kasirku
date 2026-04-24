@@ -1,8 +1,9 @@
 import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 import { canAccessStore } from "@/lib/store-access";
 
-export async function POST(req: Request) {
+const postHandler = async (req: Request) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { shiftId, closing_cash, notes } = await req.json();
@@ -58,4 +59,6 @@ export async function POST(req: Request) {
   const diff = closing_cash - expected;
 
   return Response.json({ ...updatedShift, expected, diff });
-}
+};
+
+export const POST = withPlanGuard("shift")(postHandler);

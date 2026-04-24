@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 
-export async function PATCH(
+const patchHandler = async (
   req: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { id } = await params;
@@ -51,4 +52,6 @@ export async function PATCH(
   });
 
   return NextResponse.json(updated);
-}
+};
+
+export const PATCH = withPlanGuard("booking")(patchHandler);

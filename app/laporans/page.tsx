@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { PlanPageGate } from "@/components/PlanPageGate";
+import { usePlanAccess } from "@/lib/use-plan-access";
 import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -97,6 +99,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export default function LaporanShiftPage() {
   const { data: session } = useSession();
+  const { loading: planLoading, hasFeatureAccess } = usePlanAccess("laporan_shift");
   const { demoStoreId, isDemoMode } = useDemoMode();
   const storeId = isDemoMode
     ? demoStoreId
@@ -351,6 +354,9 @@ export default function LaporanShiftPage() {
     { key: "bulanan", label: "Bulanan" },
     { key: "custom", label: "Custom" },
   ];
+
+  if (planLoading) return <PlanPageGate feature="laporan_shift" featureName="Laporan Shift" />;
+  if (!hasFeatureAccess) return <PlanPageGate feature="laporan_shift" featureName="Laporan Shift" />;
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">

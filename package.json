@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "plan:set": "node --env-file=.env scripts/set-plan.mjs set",
+    "plan:promote-ultra": "node --env-file=.env scripts/promote-existing-subscribers-to-ultra.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.6.0",

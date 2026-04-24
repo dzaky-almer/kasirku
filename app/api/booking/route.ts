@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 import { canAccessStore } from "@/lib/store-access";
 import {
@@ -11,7 +12,7 @@ import {
   timeToMinutes,
 } from "@/lib/booking";
 
-export async function GET(req: Request) {
+const getHandler = async (req: Request) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { searchParams } = new URL(req.url);
@@ -61,9 +62,9 @@ export async function GET(req: Request) {
   });
 
   return NextResponse.json(bookings);
-}
+};
 
-export async function POST(req: Request) {
+const postHandler = async (req: Request) => {
   const session = await auth();
   const userId = session?.user?.id;
   const body = await req.json().catch(() => null);
@@ -220,4 +221,7 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json(booking, { status: 201 });
-}
+};
+
+export const GET = withPlanGuard("booking")(getHandler);
+export const POST = withPlanGuard("booking")(postHandler);

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { findReferralCodeByCode } from "@/lib/referral-codes";
 
 const PLAN_LABEL: Record<string, string> = {
   starter: "Starter",
@@ -16,9 +16,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const record = await prisma.referralCode.findUnique({
-      where: { code },
-    });
+    const record = await findReferralCodeByCode(code);
 
     if (!record) {
       return NextResponse.json({ valid: false, error: "Kode tidak ditemukan" });

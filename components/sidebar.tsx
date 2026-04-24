@@ -1,14 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useDemoMode, clearDemoMeta } from "@/lib/demo";
+import UpgradePrompt from "@/components/UpgradePrompt";
+import { getRequiredPlan, hasAccess, normalizePlan, type Feature } from "@/lib/plans";
 
 const navItems = [
   {
     label: "Dashboard",
     href: "/dashboard",
+    feature: "dashboard" as Feature,
     icon: (
       <>
         <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" />
@@ -21,6 +25,7 @@ const navItems = [
   {
     label: "Kasir",
     href: "/kasir",
+    feature: "kasir" as Feature,
     icon: (
       <>
         <rect x="2" y="4" width="12" height="8" rx="1" stroke="currentColor" />
@@ -31,6 +36,7 @@ const navItems = [
   {
     label: "Produk",
     href: "/product",
+    feature: "produk" as Feature,
     icon: (
       <>
         <path d="M8 2L14 5v6L8 14 2 11V5z" stroke="currentColor" />
@@ -41,6 +47,7 @@ const navItems = [
   {
     label: "Supplier",
     href: "/suppliers",
+    feature: "supplier" as Feature,
     icon: (
       <>
         <path d="M3 13v-1a2 2 0 012-2h6a2 2 0 012 2v1" stroke="currentColor" />
@@ -51,6 +58,7 @@ const navItems = [
   {
     label: "Laporan",
     href: "/laporan",
+    feature: "laporan_produk" as Feature,
     icon: (
       <>
         <path d="M2 13V6l3-3 3 3 3-2 3 2v7M2 13h12" stroke="currentColor" />
@@ -60,6 +68,7 @@ const navItems = [
   {
     label: "Shift",
     href: "/shifts",
+    feature: "shift" as Feature,
     icon: (
       <>
         <circle cx="8" cy="8" r="6" stroke="currentColor" />
@@ -70,6 +79,7 @@ const navItems = [
   {
     label: "Laporan Shift",
     href: "/laporans",
+    feature: "laporan_shift" as Feature,
     icon: (
       <>
         <rect x="3" y="2" width="10" height="12" rx="1" stroke="currentColor" />
@@ -80,6 +90,7 @@ const navItems = [
   {
     label: "Promo",
     href: "/promo",
+    feature: "produk" as Feature,
     icon: (
       <>
         <path d="M3 6.5V4.5A1.5 1.5 0 014.5 3h7A1.5 1.5 0 0113 4.5v2" stroke="currentColor" />
@@ -92,6 +103,7 @@ const navItems = [
   {
     label: "Booking",
     href: "/booking",
+    feature: "booking" as Feature,
     icon: (
       <>
         <rect x="2" y="3" width="12" height="11" rx="1" stroke="currentColor" />
@@ -103,6 +115,7 @@ const navItems = [
   {
     label: "Aset Booking",
     href: "/booking/resources",
+    feature: "booking" as Feature,
     icon: (
       <>
         <rect x="2" y="4" width="12" height="8" rx="1" stroke="currentColor" />
@@ -113,6 +126,7 @@ const navItems = [
   {
     label: "Pengaturan Booking",
     href: "/booking/settings",
+    feature: "booking" as Feature,
     icon: (
       <>
         <circle cx="8" cy="8" r="2" stroke="currentColor" />
@@ -128,15 +142,18 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const { isDemoMode } = useDemoMode();
+  const [lockedNav, setLockedNav] = useState<{ label: string; feature: Feature; requiredPlan: "PRO" | "ULTRA" } | null>(null);
 
   if (hiddenOn.includes(pathname) || pathname.startsWith("/book/")) return null;
 
   const email = session?.user?.email ?? "";
   const initials = email.slice(0, 2).toUpperCase() || "??";
   const withMode = (href: string) => (isDemoMode ? `${href}?demo=true` : href);
+  const currentPlan = isDemoMode ? "ULTRA" : normalizePlan(session?.user?.storePlan);
 
   return (
-    <aside className="group flex h-full w-16 flex-shrink-0 flex-col overflow-hidden border-r border-gray-100 bg-white px-3 py-4 transition-[width] duration-300 ease-out hover:w-56">
+    <>
+      <aside className="group flex h-full w-16 flex-shrink-0 flex-col overflow-hidden border-r border-gray-100 bg-white px-3 py-4 transition-[width] duration-300 ease-out hover:w-56">
 
       {/* Logo */}
       <Link
@@ -161,25 +178,57 @@ export default function Sidebar() {
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
         {navItems.map((nav) => {
           const isActive = pathname === nav.href;
-          return (
-            <Link
-              key={nav.label}
-              href={withMode(nav.href)}
-              title={nav.label}
-              className={`flex flex-shrink-0 items-center gap-3 rounded-xl px-2 py-2.5 transition-all ${
-                isActive
-                  ? "bg-amber-50 text-amber-800"
-                  : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
-              }`}
-            >
+          const locked = !hasAccess(currentPlan, nav.feature);
+          const requiredPlan = getRequiredPlan(nav.feature);
+          const commonClass = `flex w-full flex-shrink-0 items-center gap-3 rounded-xl px-2 py-2.5 text-left transition-all ${
+            isActive && !locked
+              ? "bg-amber-50 text-amber-800"
+              : locked
+                ? "cursor-pointer text-gray-300 hover:bg-gray-50 hover:text-gray-500"
+                : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+          }`;
+
+          const content = (
+            <>
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
                 <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" strokeWidth={1.5}>
                   {nav.icon}
                 </svg>
               </span>
-              <span className="whitespace-nowrap text-sm font-medium -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
-                {nav.label}
+              <span className="flex min-w-0 items-center gap-2 whitespace-nowrap text-sm font-medium -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
+                <span>{nav.label}</span>
+                {locked ? (
+                  <>
+                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                      <rect x="3" y="7" width="10" height="6" rx="1.5" />
+                      <path d="M5.5 7V5.75A2.5 2.5 0 0 1 8 3.25a2.5 2.5 0 0 1 2.5 2.5V7" strokeLinecap="round" />
+                    </svg>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                      {requiredPlan === "ULTRA" ? "Ultra" : "Pro"}
+                    </span>
+                  </>
+                ) : null}
               </span>
+            </>
+          );
+
+          if (locked) {
+            return (
+              <button
+                key={nav.label}
+                type="button"
+                title={`${nav.label} (${requiredPlan})`}
+                onClick={() => setLockedNav({ label: nav.label, feature: nav.feature, requiredPlan })}
+                className={commonClass}
+              >
+                {content}
+              </button>
+            );
+          }
+
+          return (
+            <Link key={nav.label} href={withMode(nav.href)} title={nav.label} className={commonClass}>
+              {content}
             </Link>
           );
         })}
@@ -238,6 +287,38 @@ export default function Sidebar() {
         </div>
       </div>
 
-    </aside>
+      </aside>
+
+      {lockedNav ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setLockedNav(null)}
+        >
+          <div className="w-full max-w-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-3 rounded-2xl bg-white p-4 shadow-xl">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{lockedNav.label} terkunci</p>
+                  <p className="text-xs text-gray-500">
+                    Fitur ini tersedia di paket {lockedNav.requiredPlan === "ULTRA" ? "Ultra" : "Pro"}. Upgrade sekarang?
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLockedNav(null)}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Tutup
+                </button>
+              </div>
+              <UpgradePrompt
+                requiredPlan={lockedNav.requiredPlan}
+                featureName={lockedNav.label}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

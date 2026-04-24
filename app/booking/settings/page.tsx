@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { PlanPageGate } from "@/components/PlanPageGate";
 import { bookingApi } from "@/lib/booking/api";
 import { buildTimeSlots, formatCurrency } from "@/lib/booking/format";
 import { useStoreIdentity } from "@/lib/booking/use-store-id";
+import { usePlanAccess } from "@/lib/use-plan-access";
 import type { BookingProduct, BookingSettingsResponse } from "@/lib/booking/types";
 import {
   EmptyState,
@@ -27,6 +29,7 @@ function getToday(): string {
 }
 
 export default function BookingSettingsPage() {
+  const { loading: planLoading, hasFeatureAccess } = usePlanAccess("booking");
   const { storeId, ready, status } = useStoreIdentity();
   const [data, setData] = useState<BookingSettingsResponse | null>(null);
   const [form, setForm] = useState<SettingsForm | null>(null);
@@ -71,6 +74,9 @@ export default function BookingSettingsPage() {
     if (!form) return 0;
     return buildTimeSlots(form.bookingOpenTime, form.bookingCloseTime, form.bookingSlotMinutes).length;
   }, [form]);
+
+  if (planLoading) return <PlanPageGate feature="booking" featureName="Booking" />;
+  if (!hasFeatureAccess) return <PlanPageGate feature="booking" featureName="Booking" />;
 
   async function handleSave() {
     if (!form || !storeId) return;

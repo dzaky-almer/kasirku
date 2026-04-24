@@ -13,6 +13,8 @@ export async function canAccessStore(storeId: string, userId?: string | null) {
       isDemo: true,
       userId: true,
       type: true,
+      plan: true,
+      planExpiresAt: true,
       bookingGraceMinutes: true,
       bookingOpenTime: true,
       bookingCloseTime: true,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureStorePlanAccessBySlug } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(
@@ -6,6 +7,8 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
+  const access = await ensureStorePlanAccessBySlug(slug, "booking");
+  if (!access.ok) return access.response;
   const body = await req.json().catch(() => null);
   const bookingId = body?.bookingId as string | undefined;
 

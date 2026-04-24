@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { PlanPageGate } from "@/components/PlanPageGate";
 import { useDemoMode } from "@/lib/demo";
+import { usePlanAccess } from "@/lib/use-plan-access";
 
 interface Shift {
   id: string;
@@ -33,6 +35,7 @@ export default function ShiftsPage() {
   const { data: session, status } = useSession();
   const { demoStoreId, demoUserId, isDemoMode } = useDemoMode();
   const sessionUser = (session?.user ?? {}) as SessionUser;
+  const { loading: planLoading, hasFeatureAccess } = usePlanAccess("shift");
 
   const [openShift, setOpenShift] = useState<Shift | null>(null);
   const [openingCash, setOpeningCash] = useState<number>(0);
@@ -199,6 +202,9 @@ export default function ShiftsPage() {
 
   const diff =
     closingCash !== null ? closingCash - expected : null;
+
+  if (planLoading) return <PlanPageGate feature="shift" featureName="Shift" />;
+  if (!hasFeatureAccess) return <PlanPageGate feature="shift" featureName="Shift" />;
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">

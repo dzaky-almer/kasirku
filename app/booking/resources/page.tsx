@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { PlanPageGate } from "@/components/PlanPageGate";
 import { ResourceFormModal } from "@/components/booking/admin/resource-form-modal";
 import { bookingApi } from "@/lib/booking/api";
 import { RESOURCE_TYPE_LABEL } from "@/lib/booking/format";
 import { useStoreIdentity } from "@/lib/booking/use-store-id";
+import { usePlanAccess } from "@/lib/use-plan-access";
 import type { BookingResource } from "@/lib/booking/types";
 import {
   EmptyState,
@@ -53,6 +55,7 @@ function ResourceTypeIcon({ type }: { type: string }) {
 }
 
 export default function BookingResourcesPage() {
+  const { loading: planLoading, hasFeatureAccess } = usePlanAccess("booking");
   const { storeId, ready, status } = useStoreIdentity();
   const [resources, setResources] = useState<BookingResource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,6 +130,9 @@ export default function BookingResourcesPage() {
       setError(err instanceof Error ? err.message : "Gagal menghapus resource.");
     }
   }
+
+  if (planLoading) return <PlanPageGate feature="booking" featureName="Booking" />;
+  if (!hasFeatureAccess) return <PlanPageGate feature="booking" featureName="Booking" />;
 
   if (loading) {
     return (

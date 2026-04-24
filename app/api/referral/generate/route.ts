@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import {
+  createReferralCode,
+  findReferralCodeByCode,
+  listUnusedReferralCodes,
+} from "@/lib/referral-codes";
 
 function generateCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -58,20 +62,16 @@ export async function POST(req: Request) {
 
     for (let attempt = 0; attempt < 10; attempt += 1) {
       code = generateCode();
-      const exists = await prisma.referralCode.findUnique({ where: { code } });
+      const exists = await findReferralCodeByCode(code);
       if (!exists) break;
     }
 
-    await prisma.referralCode.create({
-      data: {
-        code,
-        plan,
-        tier,
-        durationDays,
-        expiresAt,
-        isActive: true,
-        isUsed: false,
-      },
+    await createReferralCode({
+      code,
+      plan,
+      tier,
+      durationDays,
+      expiresAt,
     });
 
     codes.push(code);
@@ -117,14 +117,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const codes = await prisma.referralCode.findMany({
-    where: {
-      isActive: true,
-      isUsed: false,
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const codes = await listUnusedReferralCodes(100);
 
   return NextResponse.json({ codes, total: codes.length });
 }

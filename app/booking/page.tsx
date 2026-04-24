@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { PlanPageGate } from "@/components/PlanPageGate";
 import { bookingApi } from "@/lib/booking/api";
+import { usePlanAccess } from "@/lib/use-plan-access";
 import {
   BOOKING_STATUS_META,
   formatCurrency,
@@ -31,6 +33,7 @@ function getToday(): string {
 }
 
 export default function BookingDashboardPage() {
+  const { loading: planLoading, hasFeatureAccess } = usePlanAccess("booking");
   const { storeId, ready, status } = useStoreIdentity();
   const [selectedDate, setSelectedDate] = useState(todayInJakarta());
   const [selectedStatus, setSelectedStatus] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
@@ -103,6 +106,9 @@ export default function BookingDashboardPage() {
       setUpdating(false);
     }
   }
+
+  if (planLoading) return <PlanPageGate feature="booking" featureName="Booking" />;
+  if (!hasFeatureAccess) return <PlanPageGate feature="booking" featureName="Booking" />;
 
   if (loading) {
     return (

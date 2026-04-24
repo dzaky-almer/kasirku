@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { withPlanGuard } from "@/lib/plan-guard";
 import { formatDateInput, getDateRangeForDay } from "@/lib/date";
 import { canAccessStore } from "@/lib/store-access";
 
-export async function GET(req: Request) {
+const getHandler = async (req: Request) => {
   const session = await auth();
   const userId = session?.user?.id;
   const { searchParams } = new URL(req.url);
@@ -185,4 +186,6 @@ export async function GET(req: Request) {
     hourChart,
     transactions,
   });
-}
+};
+
+export const GET = withPlanGuard("laporan_produk")(getHandler);

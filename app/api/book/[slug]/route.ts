@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { ensureStorePlanAccessBySlug } from "@/lib/plan-guard";
 import { prisma } from "@/lib/prisma";
 import {
   bookingTimeOverlaps,
@@ -58,6 +59,8 @@ export async function GET(
 ) {
   try {
     const { slug } = await params;
+    const access = await ensureStorePlanAccessBySlug(slug, "booking");
+    if (!access.ok) return access.response;
     const store = await getPublicStore(slug);
 
     if (!store) {
@@ -77,6 +80,8 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
+    const access = await ensureStorePlanAccessBySlug(slug, "booking");
+    if (!access.ok) return access.response;
     const body = await req.json().catch(() => null);
 
     if (!body) {

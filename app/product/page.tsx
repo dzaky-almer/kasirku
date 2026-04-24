@@ -54,7 +54,7 @@ interface BulkOpnameRow {
 interface SessionUser {
   storeId?: string;
 }
-
+  
 interface BarcodeDetectionResult {
   rawValue?: string;
 }

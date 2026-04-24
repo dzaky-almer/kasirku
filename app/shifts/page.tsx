@@ -201,7 +201,7 @@ export default function ShiftsPage() {
     closingCash !== null ? closingCash - expected : null;
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-gray-100 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* HEADER */}
@@ -229,10 +229,10 @@ export default function ShiftsPage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-5">
+        <main className="flex-1 overflow-y-auto p-5 ">
 
           {/* METRIC */}
-          <div className="grid grid-cols-3 gap-3 mb-5">
+          <div className="grid grid-cols-3 gap-3 mb-5 ">
             <Card label="Uang awal" value={openShift ? formatRupiah(openShift.opening_cash) : "—"} />
             <Card label="Total penjualan" value={openShift ? formatRupiah(openShift.total_sales) : "—"} highlight />
             <Card label="Expected cash" value={openShift ? formatRupiah(expected) : "—"} />
@@ -240,7 +240,7 @@ export default function ShiftsPage() {
 
           {/* OPEN SHIFT */}
           {!openShift && (
-            <div className="bg-white rounded-xl border border-gray-100 p-5 max-w-sm">
+            <div className="bg-white rounded-xl border border-gray-100 p-5 max-w-sm shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
               <p className="text-xs font-medium text-gray-400 mb-4">
                 BUKA SHIFT
               </p>
@@ -279,14 +279,14 @@ export default function ShiftsPage() {
           {openShift && (
             <div className="grid grid-cols-2 gap-4">
 
-              <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
                 <InfoRow label="Kasir" value={openShift.cashierName || "—"} />
                 <InfoRow label="Dibuka" value={getOpenTime()} />
                 <InfoRow label="Transaksi" value={`${openShift.total_transactions ?? 0}`} />
                 <InfoRow label="Expected" value={formatRupiah(expected)} />
               </div>
 
-              <div className="bg-white text-black rounded-xl border border-gray-100 p-5">
+              <div className="bg-white text-black rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
                 <input
                   type="text"
                   placeholder="Uang akhir"
@@ -338,7 +338,7 @@ export default function ShiftsPage() {
 
 function Card({ label, value, highlight = false }: CardProps) {
   return (
-    <div className="bg-white rounded-xl p-4 border border-gray-100">
+    <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
       <p className="text-xs text-gray-400 mb-1">{label}</p>
       <p className={`text-xl font-medium ${highlight ? "text-emerald-600" : "text-gray-900"}`}>
         {value}

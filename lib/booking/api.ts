@@ -18,13 +18,24 @@ async function request<T>(input: RequestInfo, init?: RequestInit) {
     },
   });
 
-  const payload = await response.json().catch(() => null);
+  const raw = await response.text().catch(() => "");
+  const payload = raw
+    ? (() => {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      })()
+    : null;
 
   if (!response.ok) {
     const message =
       typeof payload?.error === "string"
         ? payload.error
-        : "Terjadi kesalahan saat memproses permintaan.";
+        : raw.trim()
+          ? raw.trim().slice(0, 240)
+          : `Terjadi kesalahan saat memproses permintaan. (${response.status})`;
     throw new Error(message);
   }
 

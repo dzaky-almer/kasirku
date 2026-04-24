@@ -681,7 +681,7 @@ export default function KasirPage() {
         }}
       />
 
-      <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
+      <div className="flex h-screen bg-gray-100 overflow-hidden font-sans">
         {/* ── PRODUCT AREA ──────────────────────────────────── */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">

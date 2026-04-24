@@ -245,7 +245,7 @@ export default function SuppliersPage() {
   const totalProducts = suppliers.reduce((sum, supplier) => sum + (supplier._count?.products ?? 0), 0);
 
   return (
-    <div className="flex-1 min-h-screen bg-gray-50 p-6">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-5">
         <div className="flex items-center justify-between">
           <div>
@@ -263,7 +263,7 @@ export default function SuppliersPage() {
             { label: "Supplier aktif", value: activeCount, sub: "siap dipakai" },
             { label: "Produk terkait", value: totalProducts, sub: "produk terhubung" },
           ].map((card) => (
-            <div key={card.label} className="bg-white rounded-2xl border border-gray-100 p-4">
+            <div key={card.label} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
               <p className="text-xs text-gray-400">{card.label}</p>
               <p className="text-2xl font-semibold text-gray-900 mt-1">{card.value}</p>
               <p className="text-xs text-gray-400 mt-1">{card.sub}</p>
@@ -272,7 +272,7 @@ export default function SuppliersPage() {
         </div>
 
         <div className="grid grid-cols-[380px,1fr] gap-4">
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
             <div className="p-4 border-b border-gray-100 space-y-3">
               <div className="flex items-center gap-2">
                 <input
@@ -308,7 +308,7 @@ export default function SuppliersPage() {
                       selectedId === supplier.id ? "bg-amber-50" : "hover:bg-gray-50"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start justify-between gap-3 ">
                       <div>
                         <p className="text-sm font-medium text-gray-800">{supplier.name}</p>
                         <p className="text-xs text-gray-400 mt-1">
@@ -331,14 +331,14 @@ export default function SuppliersPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
             {detailLoading ? (
               <div className="h-full flex items-center justify-center text-sm text-gray-400">Memuat detail supplier...</div>
             ) : !selectedSupplier ? (
               <div className="h-full flex items-center justify-center text-sm text-gray-400">Pilih supplier untuk melihat detail.</div>
             ) : (
               <div className="space-y-5">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-4 ">
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-lg font-semibold text-gray-900">{selectedSupplier.name}</h2>

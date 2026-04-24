@@ -353,7 +353,7 @@ export default function LaporanShiftPage() {
   ];
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-gray-100 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* HEADER */}
@@ -488,7 +488,7 @@ export default function LaporanShiftPage() {
           {!loading && summary && (
             <>
               {/* METRIC CARDS */}
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-5 gap-3 ">
                 {[
                   {
                     label: "Total omzet",
@@ -524,7 +524,7 @@ export default function LaporanShiftPage() {
                 ].map((c) => (
                   <div
                     key={c.label}
-                    className="bg-white rounded-xl p-4 border border-gray-100"
+                    className="bg-white rounded-xl p-4 border border-gray-100 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow"
                   >
                     <p className="text-xs text-gray-400 mb-1">{c.label}</p>
                     <p
@@ -543,7 +543,7 @@ export default function LaporanShiftPage() {
               <div className="grid grid-cols-3 gap-3">
 
                 {/* AreaChart — pengganti bar chart lama */}
-                <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
+                <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
                   <div className="flex items-center justify-between mb-5">
                     <p className="text-xs font-medium text-gray-400 tracking-wider">
                       PENJUALAN PER SHIFT
@@ -661,7 +661,7 @@ export default function LaporanShiftPage() {
                 </div>
 
                 {/* INSIGHT — tidak berubah */}
-                <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
+                <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
                   <p className="text-xs font-medium text-gray-400 tracking-wider">
                     INSIGHT OTOMATIS
                   </p>
@@ -733,7 +733,7 @@ export default function LaporanShiftPage() {
               </div>
 
               {/* LIST SHIFT */}
-              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
                 <div className="px-5 py-3 border-b border-gray-100">
                   <p className="text-xs font-medium text-gray-400 tracking-wider">
                     DAFTAR SHIFT

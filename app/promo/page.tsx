@@ -305,7 +305,7 @@ export default function PromoAdminPage() {
 
   // ── RENDER ────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 font-sans">
+    <div className="min-h-screen bg-gray-100 font-sans">
 
       {/* Header */}
       <header className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
@@ -372,9 +372,9 @@ export default function PromoAdminPage() {
 
         {/* ── PROMO LIST ──────────────────────────────────── */}
         {loading ? (
-          <div className="flex items-center justify-center py-20 text-sm text-gray-400">Memuat promo...</div>
+          <div className="flex items-center justify-center py-20 text-sm text-gray-400 ">Memuat promo...</div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="flex flex-col items-center justify-center py-20 text-center ">
             <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mb-3">
               <svg viewBox="0 0 24 24" className="w-7 h-7 text-amber-400" fill="none" strokeWidth={1.5} stroke="currentColor">
                 <path d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2z" strokeLinecap="round" />

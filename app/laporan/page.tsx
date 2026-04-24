@@ -508,7 +508,7 @@ function BarangLambatTab({ slowProducts, suppliers, supplierFilter, onSupplierFi
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-3 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
+      <div className="grid grid-cols-4 gap-3 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2xl p-4">
         {[
           { label: "Total produk lambat", value: filteredProducts.length, sub: "produk", color: "text-gray-800" },
           { label: "Supplier aktif", value: new Set(filteredProducts.map((p) => p.supplierId).filter(Boolean)).size, sub: "supplier", color: "text-emerald-600" },
@@ -525,7 +525,7 @@ function BarangLambatTab({ slowProducts, suppliers, supplierFilter, onSupplierFi
       </div>
 
       {filteredProducts.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
+        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
           <p className="text-2xl mb-2">✅</p>
           <p className="text-gray-600 text-sm font-medium">Semua produk berputar dengan baik!</p>
           <p className="text-gray-400 text-xs mt-1">Tidak ada produk dengan perputaran lambat pada filter ini.</p>
@@ -533,7 +533,7 @@ function BarangLambatTab({ slowProducts, suppliers, supplierFilter, onSupplierFi
       ) : (
         <>
           {/* Bar chart top 10 produk paling lama tidak terjual */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
             <p className="text-xs font-semibold text-gray-400 tracking-wider mb-4">10 PRODUK PALING LAMA TIDAK TERJUAL (HARI)</p>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
@@ -567,7 +567,7 @@ function BarangLambatTab({ slowProducts, suppliers, supplierFilter, onSupplierFi
           </div>
 
           {/* Table */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
               <p className="text-xs font-semibold text-gray-700">DAFTAR PRODUK LAMBAT</p>
               <div className="flex items-center gap-1.5">
@@ -757,12 +757,12 @@ function AuditTab({ transactions, summary, topProducts, dateFrom, dateTo }: {
 
       {/* Audit summary */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
+        <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
           <div className="flex items-center gap-2 mb-4">
             <span className="w-1.5 h-4 bg-amber-600 rounded-full"></span>
             <p className="text-xs font-semibold text-gray-700 tracking-wide">RINGKASAN AUDIT FINANSIAL</p>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-4 ">
             {[
               { label: "Total Omzet Kotor", value: fmtFull(summary?.totalRevenue ?? 0), accent: true },
               { label: "Total Transaksi", value: String(summary?.totalTransactions ?? 0) },
@@ -780,7 +780,7 @@ function AuditTab({ transactions, summary, topProducts, dateFrom, dateTo }: {
         </div>
 
         {/* Anomali */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
           <div className="flex items-center gap-2 mb-4">
             <span className="w-1.5 h-4 bg-red-500 rounded-full"></span>
             <p className="text-xs font-semibold text-gray-700 tracking-wide">DETEKSI ANOMALI</p>
@@ -810,7 +810,7 @@ function AuditTab({ transactions, summary, topProducts, dateFrom, dateTo }: {
       </div>
 
       {/* Distribusi nilai transaksi */}
-      <div className="bg-white rounded-xl border border-gray-5  00 p-5">
+      <div className="bg-white rounded-xl border border-gray-5  00 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
         <p className="text-xs font-semibold text-gray-400 tracking-wider mb-4">DISTRIBUSI NILAI TRANSAKSI</p>
         <div className="space-y-3">
           {distribution.map(d => {
@@ -831,7 +831,7 @@ function AuditTab({ transactions, summary, topProducts, dateFrom, dateTo }: {
       </div>
 
       {/* Top transaksi terbesar */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
         <div className="px-5 py-3 border-b border-gray-100">
           <p className="text-xs font-semibold text-gray-700">5 TRANSAKSI TERBESAR (UNTUK VERIFIKASI)</p>
         </div>
@@ -1022,11 +1022,11 @@ function PajakTab({ summary, topProducts, transactions, dateFrom, dateTo }: {
             </select>
           </div>
           <button onClick={exportPajakExcel}
-            className="px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
+            className="px-3 py-1.5 text-xs font-medium bg-green-800 text-white rounded-lg hover:bg-green-900 transition-colors">
             Export Excel
           </button>
           <button onClick={exportPajakPDF}
-            className="px-3 py-1.5 text-xs font-medium bg-green-700 text-white rounded-lg hover:bg-green-800 transition-colors">
+            className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
             Export PDF
           </button>
         </div>
@@ -1034,7 +1034,7 @@ function PajakTab({ summary, topProducts, transactions, dateFrom, dateTo }: {
 
       <div className="grid grid-cols-3 gap-3">
         {/* Laporan L/R */}
-        <div className="col-span-2 bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="col-span-2 bg-white rounded-xl border border-gray-100 overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
           <div className="px-5 py-3 bg-green-700 text-white">
             <p className="text-xs font-semibold tracking-wide">LAPORAN LABA RUGI & PERPAJAKAN</p>
             <p className="text-[10px] text-green-200 mt-0.5">Periode: {periode}</p>
@@ -1068,16 +1068,16 @@ function PajakTab({ summary, topProducts, transactions, dateFrom, dateTo }: {
         </div>
 
         {/* Info box */}
-        <div className="space-y-3">
+        <div className="space-y-3 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x p-2">
           {/* KPI */}
           {[
             { label: "Omzet Kotor", value: fmtFull(omzetKotor), color: "text-gray-900", bg: "bg-white" },
-            { label: "DPP (Neto)", value: fmtFull(omzetNeto), color: "text-blue-700", bg: "bg-blue-50" },
-            { label: "Laba Bersih Est.", value: fmtFull(labaBersih), color: labaBersih >= 0 ? "text-green-700" : "text-red-600", bg: labaBersih >= 0 ? "bg-green-50" : "bg-red-50" },
-            { label: "Total Pajak", value: fmtFull(ppn + pph), color: "text-red-700", bg: "bg-red-50" },
+            { label: "DPP (Neto)", value: fmtFull(omzetNeto), color: "text-blue-700", bg: "bg-blue-100" },
+            { label: "Laba Bersih Est.", value: fmtFull(labaBersih), color: labaBersih >= 0 ? "text-green-700" : "text-red-600", bg: labaBersih >= 0 ? "bg-green-100" : "bg-red-100" },
+            { label: "Total Pajak", value: fmtFull(ppn + pph), color: "text-red-700", bg: "bg-red-100" },
           ].map(k => (
             <div key={k.label} className={`${k.bg} rounded-xl border border-gray-100 p-4`}>
-              <p className="text-[10px] text-gray-400 mb-0.5">{k.label}</p>
+              <p className="text-[10px] text-gray-700 mb-0.5">{k.label}</p>
               <p className={`text-base font-semibold ${k.color}`}>{k.value}</p>
             </div>
           ))}
@@ -1502,7 +1502,7 @@ export default function LaporanPage() {
   ];
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-gray-100 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* HEADER */}
@@ -1574,14 +1574,14 @@ export default function LaporanPage() {
           {activeTab === "laporan" && (
             <div className="space-y-4">
               {/* Metric Cards */}
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-4 gap-3 ">
                 {[
                   { label: "Total omzet", value: fmt(summary?.totalRevenue ?? 0), sub: "periode ini" },
                   { label: "Total transaksi", value: summary?.totalTransactions ?? 0, sub: "transaksi" },
                   { label: "Total item terjual", value: summary?.totalItems ?? 0, sub: "item" },
                   { label: "Rata-rata transaksi", value: fmt(summary?.avgTransaction ?? 0), sub: "per transaksi" },
                 ].map(c => (
-                  <div key={c.label} className="bg-white rounded-xl p-4 border border-gray-100">
+                  <div key={c.label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
                     <p className="text-xs text-gray-400 mb-1">{c.label}</p>
                     <p className="text-xl font-medium text-gray-900">{c.value}</p>
                     <p className="text-xs text-gray-400 mt-1">{c.sub}</p>
@@ -1591,9 +1591,9 @@ export default function LaporanPage() {
 
               {/* Charts Row */}
               <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
+                <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
                   <div className="flex items-center justify-between mb-5">
-                    <p className="text-xs font-medium text-gray-400 tracking-wider">PENJUALAN PER HARI</p>
+                    <p className="text-xs font-medium text-gray-400 tracking-wider">HARI</p>
                     <div className="flex items-center gap-3">
                       {[{ color: "bg-green-600", label: "Naik" }, { color: "bg-red-600", label: "Turun" }, { color: "bg-amber-700", label: "Awal" }].map(l => (
                         <span key={l.label} className="flex items-center gap-1.5 text-[10px] text-gray-400">
@@ -1629,7 +1629,7 @@ export default function LaporanPage() {
                   )}
                 </div>
 
-                <div className="bg-white rounded-xl border border-gray-100 p-5">
+                <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
                   <p className="text-xs font-medium text-gray-400 tracking-wider mb-4">TOP PRODUK</p>
                   {topProducts.length === 0 ? (
                     <p className="text-xs text-gray-400">Belum ada data.</p>
@@ -1657,15 +1657,15 @@ export default function LaporanPage() {
               </div>
 
               {/* Peak Hour */}
-              <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
                 <div className="flex items-center justify-between mb-5">
                   <div>
-                    <p className="text-xs font-medium text-gray-400 tracking-wider">JAM RAMAI (PEAK HOUR)</p>
+                    <p className="text-xs font-medium text-gray-400 tracking-wider ">JAM RAMAI (PEAK HOUR)</p>
                     <p className="text-[10px] text-gray-400 mt-0.5">Distribusi transaksi per jam</p>
                   </div>
                   {peakHour && peakHour.count > 0 && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400">Jam puncak</span>
+                    <div className="flex items-center gap-2 ">
+                      <span className="text-[10px] text-gray-400 ">Jam puncak</span>
                       <span className="text-xs px-3 py-1 rounded-full bg-amber-50 text-amber-700 font-medium border border-amber-100">
                         {peakHour.label} · {peakHour.count} trx
                       </span>
@@ -1689,7 +1689,7 @@ export default function LaporanPage() {
                           { label: "Jam tersunyi", value: activeHours.at(-1)?.label ?? "-", sub: `${activeHours.at(-1)?.count ?? 0} transaksi` },
                           { label: "Total jam aktif", value: `${activeHours.length} jam`, sub: `dari ${total} transaksi` },
                         ].map(s => (
-                          <div key={s.label} className="bg-gray-50 rounded-lg px-3 py-2.5">
+                          <div key={s.label} className="bg-gray-50 rounded-lg px-3 py-2.5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
                             <p className="text-[10px] text-gray-400 mb-0.5">{s.label}</p>
                             <p className="text-sm font-medium text-gray-800">{s.value}</p>
                             <p className="text-[10px] text-gray-400">{s.sub}</p>
@@ -1702,7 +1702,7 @@ export default function LaporanPage() {
               </div>
 
               {/* Tabel Transaksi */}
-              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow rounded-2x">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">

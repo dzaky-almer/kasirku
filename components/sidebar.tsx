@@ -74,16 +74,19 @@ const navItems = [
       <>
         <path d="M2 13V6l3-3 3 3 3-2 3 2v7M2 13h12" stroke="currentColor" />
       </>
-    )
+    ),
   },
   {
-    label: "promo",
+    label: "Promo",
     href: "/promo",
     icon: (
       <>
-        <path d="M2 13V6l3-3 3 3 3-2 3 2v7M2 13h12" stroke="currentColor" />
+        <path d="M3 6.5V4.5A1.5 1.5 0 014.5 3h7A1.5 1.5 0 0113 4.5v2" stroke="currentColor" />
+        <path d="M2.5 6.5h11A1.5 1.5 0 0115 8v1a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 9V8a1.5 1.5 0 011.5-1.5z" stroke="currentColor" />
+        <path d="M8 3v7.5" stroke="currentColor" />
+        <path d="M6.2 4.7c0 .7.8 1.3 1.8 1.3s1.8.6 1.8 1.3S9 8.6 8 8.6 6.2 8 6.2 7.3" stroke="currentColor" strokeLinecap="round" />
       </>
-    )
+    ),
   },
   {
     label: "Booking",
@@ -116,7 +119,6 @@ const navItems = [
       </>
     ),
   },
-
 ];
 
 const hiddenOn = ["/", "/home", "/login", "/register", "/admin/activate"];
@@ -128,27 +130,30 @@ export default function Sidebar() {
 
   if (hiddenOn.includes(pathname) || pathname.startsWith("/book/")) return null;
 
-  // Ambil 2 huruf pertama dari email untuk avatar
   const email = session?.user?.email ?? "";
   const initials = email.slice(0, 2).toUpperCase() || "??";
   const withMode = (href: string) => (isDemoMode ? `${href}?demo=true` : href);
 
   return (
-    <aside className="w-14 bg-white border-r border-gray-100 flex flex-col items-center py-4 gap-1 flex-shrink-0">
-      {/* Logo */}
+    <aside className="group flex h-full w-16 flex-shrink-0 flex-col gap-1 overflow-hidden border-r border-gray-100 bg-white px-3 py-4 transition-[width] duration-300 ease-out hover:w-56">
       <Link
         href={withMode("/dashboard")}
-        className="w-8 h-8 bg-amber-700 rounded-lg flex items-center justify-center mb-3"
-        title="Kopi Nusantara"
+        className="mb-3 flex items-center gap-3 rounded-xl px-2 py-1.5"
+        title="KasirKu"
       >
-        <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none">
-          <path d="M4 12c0-3 1.5-5 4-5s4 2 4 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-          <path d="M6 7V5a2 2 0 0 1 4 0v2" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-          <ellipse cx="8" cy="12.5" rx="4" ry="1.5" stroke="white" strokeWidth="1.2" />
-        </svg>
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-700 shadow-sm">
+          <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none">
+            <path d="M4 12c0-3 1.5-5 4-5s4 2 4 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M6 7V5a2 2 0 0 1 4 0v2" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+            <ellipse cx="8" cy="12.5" rx="4" ry="1.5" stroke="white" strokeWidth="1.2" />
+          </svg>
+        </div>
+        <div className="min-w-0 -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
+          <p className="whitespace-nowrap text-sm font-semibold text-gray-900">KasirKu</p>
+          <p className="whitespace-nowrap text-[11px] text-gray-400">Pilih halaman dari sidebar</p>
+        </div>
       </Link>
 
-      {/* Nav items */}
       {navItems.map((nav) => {
         const isActive = pathname === nav.href;
         return (
@@ -156,70 +161,74 @@ export default function Sidebar() {
             key={nav.label}
             href={withMode(nav.href)}
             title={nav.label}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${isActive
-              ? "bg-amber-50 text-amber-800"
-              : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
-              }`}
+            className={`flex items-center gap-3 rounded-xl px-2 py-2.5 transition-all ${
+              isActive
+                ? "bg-amber-50 text-amber-800"
+                : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+            }`}
           >
-            <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5}>
-              {nav.icon}
-            </svg>
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" strokeWidth={1.5}>
+                {nav.icon}
+              </svg>
+            </span>
+            <span className="whitespace-nowrap text-sm font-medium -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
+              {nav.label}
+            </span>
           </Link>
         );
       })}
 
       <div className="flex-1" />
 
-      {/* Logout */}
       {isDemoMode ? (
         <Link
           href="/home"
           onClick={() => clearDemoMeta()}
           title="Keluar Demo"
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors mb-2"
+          className="mb-2 flex items-center gap-3 rounded-xl px-2 py-2.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
         >
-          <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5}>
-            <path
-              d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3"
-              stroke="currentColor"
-              strokeLinecap="round"
-            />
-            <path
-              d="M10 11l3-3-3-3M13 8H6"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
+            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" strokeWidth={1.5}>
+              <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" strokeLinecap="round" />
+              <path d="M10 11l3-3-3-3M13 8H6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span className="whitespace-nowrap text-sm font-medium -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
+            Keluar Demo
+          </span>
         </Link>
       ) : (
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
           title="Keluar"
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors mb-2"
+          className="mb-2 flex items-center gap-3 rounded-xl px-2 py-2.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
         >
-          <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" strokeWidth={1.5}>
-            <path
-              d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3"
-              stroke="currentColor"
-              strokeLinecap="round"
-            />
-            <path
-              d="M10 11l3-3-3-3M13 8H6"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
+            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" strokeWidth={1.5}>
+              <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" strokeLinecap="round" />
+              <path d="M10 11l3-3-3-3M13 8H6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span className="whitespace-nowrap text-sm font-medium -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
+            Keluar
+          </span>
         </button>
       )}
 
-      {/* Avatar — inisial dari email */}
-      <div
-        title={isDemoMode ? "Akun Demo" : email}
-        className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center text-[10px] font-medium text-amber-800 cursor-default select-none"
-      >
-        {isDemoMode ? "DM" : initials}
+      <div className="flex items-center gap-3 rounded-xl px-2 py-1.5">
+        <div
+          title={isDemoMode ? "Akun Demo" : email}
+          className="flex h-8 w-8 flex-shrink-0 cursor-default select-none items-center justify-center rounded-full bg-amber-100 text-[10px] font-medium text-amber-800"
+        >
+          {isDemoMode ? "DM" : initials}
+        </div>
+        <div className="min-w-0 -translate-x-2 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100">
+          <p className="whitespace-nowrap text-xs font-medium text-gray-700">{isDemoMode ? "Akun Demo" : initials}</p>
+          <p className="max-w-[140px] truncate text-[11px] text-gray-400">
+            {isDemoMode ? "Mode percobaan aktif" : email}
+          </p>
+        </div>
       </div>
     </aside>
   );

@@ -725,7 +725,7 @@ export default function ProdukPage() {
     .sort((a, b) => b.stock - a.stock);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
+    <div className="flex-1 flex flex-col overflow-hidden bg-gray-100">
 
       {/* ── HEADER ── */}
       <header className="bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between flex-shrink-0">

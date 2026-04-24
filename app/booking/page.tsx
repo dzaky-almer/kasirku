@@ -131,6 +131,9 @@ export default function BookingDashboardPage() {
     );
   }
 
+  const publicBookingKey = settings.slug || settings.id;
+  const publicBookingHref = `/book/${publicBookingKey}`;
+
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -146,7 +149,7 @@ export default function BookingDashboardPage() {
               {getToday()}
             </span>
             <Link
-              href={`/book/${settings.slug}`}
+              href={publicBookingHref}
               target="_blank"
               className="text-xs bg-amber-700 text-white px-3 py-1 rounded-full font-medium hover:bg-amber-800 transition-colors"
             >
@@ -362,7 +365,7 @@ export default function BookingDashboardPage() {
                 </Link>
 
                 <Link
-                  href={`/book/${settings.slug}`}
+                  href={publicBookingHref}
                   target="_blank"
                   className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-3 hover:border-gray-200 transition-colors shadow-lg"
                 >

@@ -1,7 +1,41 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { generateUniqueStoreSlug } from "@/lib/slug";
 import { canAccessStore } from "@/lib/store-access";
+
+const bookingSettingsSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  type: true,
+  bookingGraceMinutes: true,
+  bookingOpenTime: true,
+  bookingCloseTime: true,
+  bookingSlotMinutes: true,
+  bookingResources: {
+    orderBy: [{ type: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      type: true,
+      name: true,
+      capacity: true,
+      description: true,
+      isActive: true,
+    },
+  },
+  products: {
+    orderBy: [{ category: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      price: true,
+      category: true,
+      bookingEnabled: true,
+      bookingDurationMin: true,
+    },
+  },
+} as const;
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -18,40 +52,26 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const existingStore = await prisma.store.findUnique({
+    where: { id: storeId },
+    select: { id: true, name: true, slug: true },
+  });
+
+  if (!existingStore) {
+    return NextResponse.json({ error: "Store tidak ditemukan" }, { status: 404 });
+  }
+
+  if (!existingStore.slug) {
+    const generatedSlug = await generateUniqueStoreSlug(existingStore.name);
+    await prisma.store.update({
+      where: { id: storeId },
+      data: { slug: generatedSlug },
+    });
+  }
+
   const settings = await prisma.store.findUnique({
     where: { id: storeId },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      type: true,
-      bookingGraceMinutes: true,
-      bookingOpenTime: true,
-      bookingCloseTime: true,
-      bookingSlotMinutes: true,
-      bookingResources: {
-        orderBy: [{ type: "asc" }, { name: "asc" }],
-        select: {
-          id: true,
-          type: true,
-          name: true,
-          capacity: true,
-          description: true,
-          isActive: true,
-        },
-      },
-      products: {
-        orderBy: [{ category: "asc" }, { name: "asc" }],
-        select: {
-          id: true,
-          name: true,
-          price: true,
-          category: true,
-          bookingEnabled: true,
-          bookingDurationMin: true,
-        },
-      },
-    },
+    select: bookingSettingsSelect,
   });
 
   if (!settings) {
@@ -103,13 +123,7 @@ export async function PATCH(req: Request) {
       bookingSlotMinutes:
         typeof bookingSlotMinutes === "number" ? Math.min(Math.max(bookingSlotMinutes, 5), 180) : undefined,
     },
-    select: {
-      id: true,
-      bookingGraceMinutes: true,
-      bookingOpenTime: true,
-      bookingCloseTime: true,
-      bookingSlotMinutes: true,
-    },
+    select: bookingSettingsSelect,
   });
 
   return NextResponse.json(updated);

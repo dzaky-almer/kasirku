@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Script from "next/script";
 import { useDemoMode } from "@/lib/demo";
+import { useSubscriptionPlan } from "@/lib/use-subscription-plan";
 
 interface Product {
   id: string;
@@ -179,6 +180,7 @@ export default function KasirPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const { demoStoreId, demoUserId, isDemoMode } = useDemoMode();
+  const { plan } = useSubscriptionPlan();
   const sessionUser = (session?.user ?? {}) as SessionUser;
   const storeId = isDemoMode ? demoStoreId : sessionUser.storeId ?? "";
   const userId = isDemoMode ? demoUserId : sessionUser.id ?? "";
@@ -574,7 +576,7 @@ export default function KasirPage() {
 
   // ── SAVE TRANSACTION ─────────────────────────────────────
   async function saveTransaction(method: "cash" | "qris") {
-    if (!shift?.id) {
+    if (plan !== "basic" && !shift?.id) {
       alert("Shift belum dibuka!");
       return false;
     }
@@ -585,7 +587,7 @@ export default function KasirPage() {
       body: JSON.stringify({
         storeId,
         userId,
-        shiftId: shift.id,
+        shiftId: shift?.id,
         paymentMethod: method,
         items: cart.map((item) => ({
           productId: item.id,

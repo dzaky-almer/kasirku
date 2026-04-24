@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useDemoMode } from "@/lib/demo";
+import FeatureGate from "@/components/feature-gate";
 
 // ── TYPES ─────────────────────────────────────────────────
 type PromoType = "PRODUCT" | "HAPPY_HOUR" | "MIN_TRANSACTION";
@@ -107,7 +108,7 @@ const TAG_DOT: Record<string, string> = {
 };
 
 // ── COMPONENT ─────────────────────────────────────────────
-export default function PromoAdminPage() {
+function PromoAdminPageContent() {
   const { data: session } = useSession();
   const router = useRouter();
   const { demoStoreId, isDemoMode } = useDemoMode();
@@ -882,5 +883,13 @@ export default function PromoAdminPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PromoAdminPage() {
+  return (
+    <FeatureGate feature="promo">
+      <PromoAdminPageContent />
+    </FeatureGate>
   );
 }

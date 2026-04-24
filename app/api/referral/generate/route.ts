@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getPlanLabel, normalizePlan } from "@/lib/subscription-plan";
 
 function generateCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -7,16 +8,6 @@ function generateCode() {
     Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 
   return `TK-${part(4)}-${part(4)}`;
-}
-
-function getPlanLabel(plan: string) {
-  const labels: Record<string, string> = {
-    starter: "Starter",
-    pro: "Pro",
-    ultra: "Ultra",
-  };
-
-  return labels[plan] ?? plan;
 }
 
 function getTierLabel(tier: string) {
@@ -37,8 +28,9 @@ export async function POST(req: Request) {
     quantity?: number;
     expiresInDays?: number;
   };
+  const normalizedPlan = normalizePlan(plan);
 
-  if (!["starter", "pro", "ultra"].includes(plan)) {
+  if (!["basic", "pro", "ultra", "starter"].includes(plan)) {
     return NextResponse.json({ error: "Plan tidak valid" }, { status: 400 });
   }
 
@@ -65,7 +57,7 @@ export async function POST(req: Request) {
     await prisma.referralCode.create({
       data: {
         code,
-        plan,
+        plan: normalizedPlan,
         tier,
         durationDays,
         expiresAt,
@@ -85,7 +77,7 @@ export async function POST(req: Request) {
       "Halo, akun TokoKu kamu sudah siap diaktifkan.",
       "",
       `Kode referral: ${code}`,
-      `Paket: ${getPlanLabel(plan)} (${getTierLabel(tier)})`,
+      `Paket: ${getPlanLabel(normalizedPlan)} (${getTierLabel(tier)})`,
       `Durasi aktif: ${durationDays} hari`,
       "",
       "Cara aktivasi:",
@@ -103,7 +95,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     success: true,
     codes,
-    plan,
+    plan: normalizedPlan,
     tier,
     durationDays,
     waPesanTemplate: qty === 1 ? waPesanTemplate[0] : waPesanTemplate,

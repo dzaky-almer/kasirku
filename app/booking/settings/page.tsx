@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import FeatureGate from "@/components/feature-gate";
 import { bookingApi } from "@/lib/booking/api";
 import { buildTimeSlots, formatCurrency } from "@/lib/booking/format";
 import { useStoreIdentity } from "@/lib/booking/use-store-id";
@@ -26,7 +27,7 @@ function getToday(): string {
   });
 }
 
-export default function BookingSettingsPage() {
+function BookingSettingsPageContent() {
   const { storeId, ready, status } = useStoreIdentity();
   const [data, setData] = useState<BookingSettingsResponse | null>(null);
   const [form, setForm] = useState<SettingsForm | null>(null);
@@ -371,5 +372,13 @@ export default function BookingSettingsPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function BookingSettingsPage() {
+  return (
+    <FeatureGate feature="booking_settings">
+      <BookingSettingsPageContent />
+    </FeatureGate>
   );
 }

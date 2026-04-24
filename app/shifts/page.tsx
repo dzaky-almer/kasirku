@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useDemoMode } from "@/lib/demo";
+import FeatureGate from "@/components/feature-gate";
 
 interface Shift {
   id: string;
@@ -29,7 +30,7 @@ interface InfoRowProps {
   value: string;
 }
 
-export default function ShiftsPage() {
+function ShiftsPageContent() {
   const { data: session, status } = useSession();
   const { demoStoreId, demoUserId, isDemoMode } = useDemoMode();
   const sessionUser = (session?.user ?? {}) as SessionUser;
@@ -333,6 +334,14 @@ export default function ShiftsPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function ShiftsPage() {
+  return (
+    <FeatureGate feature="shift">
+      <ShiftsPageContent />
+    </FeatureGate>
   );
 }
 

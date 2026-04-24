@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const PLAN_LABEL: Record<string, string> = {
-  starter: "Starter",
-  pro: "Pro",
-  ultra: "Ultra",
-};
+import { getPlanLabel, normalizePlan } from "@/lib/subscription-plan";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -32,12 +27,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ valid: false, error: "Kode referral sudah kedaluwarsa" });
     }
 
-    const planLabel = PLAN_LABEL[record.plan] ?? record.plan;
+    const normalizedPlan = normalizePlan(record.plan);
+    const planLabel = getPlanLabel(normalizedPlan);
     const tierLabel = record.tier === "yearly" ? "Tahunan" : "Bulanan";
 
     return NextResponse.json({
       valid: true,
-      plan: record.plan,
+      plan: normalizedPlan,
       tier: record.tier,
       durationDays: record.durationDays,
       planLabel,

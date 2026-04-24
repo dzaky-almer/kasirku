@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import FeatureGate from "@/components/feature-gate";
 import { ResourceFormModal } from "@/components/booking/admin/resource-form-modal";
 import { bookingApi } from "@/lib/booking/api";
 import { RESOURCE_TYPE_LABEL } from "@/lib/booking/format";
@@ -52,7 +53,7 @@ function ResourceTypeIcon({ type }: { type: string }) {
   return <span className="text-amber-700">{icons[type] ?? icons["TABLE"]}</span>;
 }
 
-export default function BookingResourcesPage() {
+function BookingResourcesPageContent() {
   const { storeId, ready, status } = useStoreIdentity();
   const [resources, setResources] = useState<BookingResource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -329,5 +330,13 @@ export default function BookingResourcesPage() {
         onSubmit={handleSubmit}
       />
     </div>
+  );
+}
+
+export default function BookingResourcesPage() {
+  return (
+    <FeatureGate feature="booking_resources">
+      <BookingResourcesPageContent />
+    </FeatureGate>
   );
 }

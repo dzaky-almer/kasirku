@@ -4,11 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useDemoMode, clearDemoMeta } from "@/lib/demo";
+import { canAccessFeature, getPlanLabel, type FeatureKey } from "@/lib/subscription-plan";
+import { useSubscriptionPlan } from "@/lib/use-subscription-plan";
 
 const navItems = [
   {
     label: "Dashboard",
     href: "/dashboard",
+    feature: "dashboard" as FeatureKey,
     icon: (
       <>
         <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" />
@@ -21,6 +24,7 @@ const navItems = [
   {
     label: "Kasir",
     href: "/kasir",
+    feature: "kasir" as FeatureKey,
     icon: (
       <>
         <rect x="2" y="4" width="12" height="8" rx="1" stroke="currentColor" />
@@ -31,6 +35,7 @@ const navItems = [
   {
     label: "Produk",
     href: "/product",
+    feature: "produk" as FeatureKey,
     icon: (
       <>
         <path d="M8 2L14 5v6L8 14 2 11V5z" stroke="currentColor" />
@@ -41,6 +46,7 @@ const navItems = [
   {
     label: "Supplier",
     href: "/suppliers",
+    feature: "supplier" as FeatureKey,
     icon: (
       <>
         <path d="M3 13v-1a2 2 0 012-2h6a2 2 0 012 2v1" stroke="currentColor" />
@@ -51,6 +57,7 @@ const navItems = [
   {
     label: "Laporan",
     href: "/laporan",
+    feature: "laporan" as FeatureKey,
     icon: (
       <>
         <path d="M2 13V6l3-3 3 3 3-2 3 2v7M2 13h12" stroke="currentColor" />
@@ -60,6 +67,7 @@ const navItems = [
   {
     label: "Shift",
     href: "/shifts",
+    feature: "shift" as FeatureKey,
     icon: (
       <>
         <circle cx="8" cy="8" r="6" stroke="currentColor" />
@@ -70,6 +78,7 @@ const navItems = [
   {
     label: "Laporan Shift",
     href: "/laporans",
+    feature: "laporan_shift" as FeatureKey,
     icon: (
       <>
         <rect x="3" y="2" width="10" height="12" rx="1" stroke="currentColor" />
@@ -80,6 +89,7 @@ const navItems = [
   {
     label: "Promo",
     href: "/promo",
+    feature: "promo" as FeatureKey,
     icon: (
       <>
         <path d="M3 6.5V4.5A1.5 1.5 0 014.5 3h7A1.5 1.5 0 0113 4.5v2" stroke="currentColor" />
@@ -92,6 +102,7 @@ const navItems = [
   {
     label: "Booking",
     href: "/booking",
+    feature: "booking" as FeatureKey,
     icon: (
       <>
         <rect x="2" y="3" width="12" height="11" rx="1" stroke="currentColor" />
@@ -103,6 +114,7 @@ const navItems = [
   {
     label: "Aset Booking",
     href: "/booking/resources",
+    feature: "booking_resources" as FeatureKey,
     icon: (
       <>
         <rect x="2" y="4" width="12" height="8" rx="1" stroke="currentColor" />
@@ -113,6 +125,7 @@ const navItems = [
   {
     label: "Pengaturan Booking",
     href: "/booking/settings",
+    feature: "booking_settings" as FeatureKey,
     icon: (
       <>
         <circle cx="8" cy="8" r="2" stroke="currentColor" />
@@ -128,12 +141,16 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const { isDemoMode } = useDemoMode();
+  const { plan, loading } = useSubscriptionPlan();
 
   if (hiddenOn.includes(pathname) || pathname.startsWith("/book/")) return null;
 
   const email = session?.user?.email ?? "";
   const initials = email.slice(0, 2).toUpperCase() || "??";
   const withMode = (href: string) => (isDemoMode ? `${href}?demo=true` : href);
+  const visibleNavItems = loading
+    ? navItems.filter((nav) => ["dashboard", "kasir", "produk"].includes(nav.feature))
+    : navItems.filter((nav) => canAccessFeature(plan, nav.feature));
 
   return (
     <aside className="group flex h-full w-16 flex-shrink-0 flex-col overflow-hidden border-r border-gray-100 bg-white px-3 py-4 transition-[width] duration-300 ease-out hover:w-56">
@@ -159,7 +176,7 @@ export default function Sidebar() {
 
       {/* Nav items — scrollable */}
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
-        {navItems.map((nav) => {
+        {visibleNavItems.map((nav) => {
           const isActive = pathname === nav.href;
           return (
             <Link
@@ -233,6 +250,9 @@ export default function Sidebar() {
             <p className="whitespace-nowrap text-xs font-medium text-gray-700">{isDemoMode ? "Akun Demo" : initials}</p>
             <p className="max-w-[140px] truncate text-[11px] text-gray-400">
               {isDemoMode ? "Mode percobaan aktif" : email}
+            </p>
+            <p className="mt-1 whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-amber-700">
+              {isDemoMode ? "Plan Ultra" : `Plan ${getPlanLabel(plan)}`}
             </p>
           </div>
         </div>

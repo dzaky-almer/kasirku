@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import FeatureGate from "@/components/feature-gate";
 import { bookingApi } from "@/lib/booking/api";
 import {
   BOOKING_STATUS_META,
@@ -30,7 +31,7 @@ function getToday(): string {
   });
 }
 
-export default function BookingDashboardPage() {
+function BookingDashboardPageContent() {
   const { storeId, ready, status } = useStoreIdentity();
   const [selectedDate, setSelectedDate] = useState(todayInJakarta());
   const [selectedStatus, setSelectedStatus] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
@@ -420,6 +421,14 @@ export default function BookingDashboardPage() {
         />
       ) : null}
     </div>
+  );
+}
+
+export default function BookingDashboardPage() {
+  return (
+    <FeatureGate feature="booking">
+      <BookingDashboardPageContent />
+    </FeatureGate>
   );
 }
 

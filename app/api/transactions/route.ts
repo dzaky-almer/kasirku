@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { getDateRangeForDay } from "@/lib/date";
 import { canAccessStore } from "@/lib/store-access";
 import { createStockMovement } from "@/lib/inventory";
+import { normalizePlan } from "@/lib/subscription-plan";
 
 interface CartItemInput {
   productId: string;
@@ -37,10 +38,6 @@ export async function POST(req: Request) {
     discountAmount?: number;
   };
 
-  if (!shiftId) {
-    return NextResponse.json({ error: "Shift belum dibuka" }, { status: 400 });
-  }
-
   if (!storeId || !Array.isArray(cartItems) || cartItems.length === 0) {
     return NextResponse.json(
       { error: "storeId dan items wajib diisi" },
@@ -65,15 +62,64 @@ export async function POST(req: Request) {
         throw new Error("Store tidak ditemukan atau tidak bisa diakses");
       }
 
-      const shift = await tx.shift.findFirst({
-        where: {
-          id: shiftId,
-          storeId,
-          status: "OPEN",
-          ...(store.isDemo ? {} : { userId }),
-        },
-        select: { id: true },
-      });
+      const subscription =
+        store.isDemo || !userId
+          ? null
+          : await tx.subscription.findUnique({
+              where: { userId },
+              select: { plan: true },
+            });
+
+      const plan = normalizePlan(subscription?.plan);
+      const requiresManualShift = plan !== "basic" && !store.isDemo;
+
+      if (!shiftId && requiresManualShift) {
+        throw new Error("Shift belum dibuka");
+      }
+
+      let shift = shiftId
+        ? await tx.shift.findFirst({
+            where: {
+              id: shiftId,
+              storeId,
+              status: "OPEN",
+              ...(store.isDemo ? {} : { userId }),
+            },
+            select: { id: true },
+          })
+        : null;
+
+      if (!shift && !requiresManualShift) {
+        shift = await tx.shift.findFirst({
+          where: {
+            storeId,
+            status: "OPEN",
+            ...(userId ? { userId } : {}),
+            notes: "AUTO_SHIFT_BASIC_PLAN",
+          },
+          select: { id: true },
+        });
+
+        if (!shift) {
+          if (!userId) {
+            throw new Error("User tidak valid untuk transaksi");
+          }
+
+          shift = await tx.shift.create({
+            data: {
+              opening_cash: 0,
+              total_sales: 0,
+              total_transactions: 0,
+              status: "OPEN",
+              notes: "AUTO_SHIFT_BASIC_PLAN",
+              userId,
+              cashierName: "Kasir Basic",
+              storeId,
+            },
+            select: { id: true },
+          });
+        }
+      }
 
       if (!shift) {
         throw new Error("Shift tidak valid untuk toko ini");
@@ -116,7 +162,7 @@ export async function POST(req: Request) {
           storeId,
           total,
           discountAmount: discount,
-          shiftId,
+          shiftId: shift.id,
           paymentMethod: paymentMethod ?? "cash",
           ...(promoId ? { promoId } : {}),
           items: {
@@ -159,7 +205,7 @@ export async function POST(req: Request) {
       }
 
       await tx.shift.update({
-        where: { id: shiftId },
+        where: { id: shift.id },
         data: {
           total_sales: { increment: total },
           total_transactions: { increment: 1 },

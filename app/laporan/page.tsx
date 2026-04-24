@@ -6,6 +6,7 @@ import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useDemoMode } from "@/lib/demo";
+import FeatureGate from "@/components/feature-gate";
 import {
   AreaChart,
   Area,
@@ -1157,7 +1158,7 @@ function PajakTab({ summary, topProducts, transactions, dateFrom, dateTo }: {
 }
 
 // ── Main Page ──────────────────────────────────────────────────
-export default function LaporanPage() {
+function LaporanPageContent() {
   const { data: session, status } = useSession();
   const { demoStoreId, isDemoMode } = useDemoMode();
   const storeId = isDemoMode
@@ -1846,5 +1847,13 @@ export default function LaporanPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LaporanPage() {
+  return (
+    <FeatureGate feature="laporan">
+      <LaporanPageContent />
+    </FeatureGate>
   );
 }

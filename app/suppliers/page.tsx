@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useDemoMode } from "@/lib/demo";
+import FeatureGate from "@/components/feature-gate";
 
 interface SessionUser {
   storeId?: string;
@@ -54,7 +55,7 @@ const emptyForm = {
   notes: "",
 };
 
-export default function SuppliersPage() {
+function SuppliersPageContent() {
   const { data: session } = useSession();
   const { demoStoreId, isDemoMode } = useDemoMode();
   const sessionUser = (session?.user ?? {}) as SessionUser;
@@ -511,5 +512,13 @@ export default function SuppliersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SuppliersPage() {
+  return (
+    <FeatureGate feature="supplier">
+      <SuppliersPageContent />
+    </FeatureGate>
   );
 }

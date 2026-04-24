@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { normalizePlan } from "@/lib/subscription-plan";
 
 // GET - Cek status subscription user
 export async function GET(req: Request) {
@@ -28,6 +29,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ...subscription,
+    plan: normalizePlan(subscription.plan),
     isExpired,
     isActive: !isExpired,
   });
@@ -37,6 +39,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const body = await req.json();
   const { userId, plan, tier = "monthly" } = body;
+  const normalizedPlan = normalizePlan(plan);
 
   if (!userId || !plan) {
     return NextResponse.json(
@@ -63,7 +66,7 @@ export async function POST(req: Request) {
   const subscription = await prisma.subscription.upsert({
     where: { userId },
     update: {
-      plan,
+      plan: normalizedPlan,
       tier,
       startDate,
       expiredAt,
@@ -71,7 +74,7 @@ export async function POST(req: Request) {
     },
     create: {
       userId,
-      plan,
+      plan: normalizedPlan,
       tier,
       startDate,
       expiredAt,

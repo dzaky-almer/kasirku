@@ -6,6 +6,7 @@ import { utils, writeFile } from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useDemoMode } from "@/lib/demo";
+import FeatureGate from "@/components/feature-gate";
 import {
   AreaChart,
   Area,
@@ -95,7 +96,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-export default function LaporanShiftPage() {
+function LaporanShiftPageContent() {
   const { data: session } = useSession();
   const { demoStoreId, isDemoMode } = useDemoMode();
   const storeId = isDemoMode
@@ -946,5 +947,13 @@ export default function LaporanShiftPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LaporanShiftPage() {
+  return (
+    <FeatureGate feature="laporan_shift">
+      <LaporanShiftPageContent />
+    </FeatureGate>
   );
 }

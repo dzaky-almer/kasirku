@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { supabase } from "@/lib/supabase";
 import { useDemoMode } from "@/lib/demo";
+import { useSubscriptionPlan } from "@/lib/use-subscription-plan";
 
 interface Product {
   id: string;
@@ -137,8 +138,11 @@ function isZxingHandle(handle: ScannerHandle | null): handle is { _zxing: { rese
 export default function ProdukPage() {
   const { data: session } = useSession();
   const { demoStoreId, isDemoMode } = useDemoMode();
+  const { plan } = useSubscriptionPlan();
   const sessionUser = (session?.user ?? {}) as SessionUser;
   const storeId = isDemoMode ? demoStoreId : sessionUser.storeId ?? "";
+  const canUseSupplierFeature = plan !== "basic";
+  const canUseBarcodeScanner = plan !== "basic";
 
   const [products, setProducts]         = useState<Product[]>([]);
   const [suppliers, setSuppliers]       = useState<Supplier[]>([]);
@@ -210,12 +214,12 @@ export default function ProdukPage() {
   }, [storeId]);
 
   useEffect(() => {
-    if (!storeId) { setSuppliers([]); return; }
+    if (!storeId || !canUseSupplierFeature) { setSuppliers([]); return; }
     fetch(`/api/suppliers?storeId=${storeId}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setSuppliers(d); })
       .catch(() => showToast("Gagal memuat supplier", "err"));
-  }, [storeId]);
+  }, [canUseSupplierFeature, storeId]);
 
   // ── Fetch data penjualan 7 hari untuk deadstock ───────────────
   useEffect(() => {
@@ -256,12 +260,30 @@ export default function ProdukPage() {
   }, [storeId]);
 
   useEffect(() => {
+    if (!canUseBarcodeScanner) return;
     navigator.mediaDevices.enumerateDevices().then(devs => {
       const videoDevs = devs.filter(d => d.kind === "videoinput");
       setDevices(videoDevs);
       if (videoDevs.length > 0) setSelectedDeviceId(videoDevs[videoDevs.length - 1].deviceId);
     }).catch(() => {});
-  }, []);
+  }, [canUseBarcodeScanner]);
+
+  useEffect(() => {
+    if (canUseSupplierFeature) return;
+    setSupplierFilter("all");
+    setShowSupplierModal(false);
+    setSupplierForm(emptySupplierForm);
+    setForm(prev => ({ ...prev, supplierId: "" }));
+    setMovementForm(prev => ({ ...prev, supplierId: "" }));
+  }, [canUseSupplierFeature]);
+
+  useEffect(() => {
+    if (canUseBarcodeScanner) return;
+    setScanMode(false);
+    setDevices([]);
+    setSelectedDeviceId("");
+    setForm(prev => ({ ...prev, barcode: "" }));
+  }, [canUseBarcodeScanner]);
 
   useEffect(() => {
     return () => {
@@ -289,7 +311,7 @@ export default function ProdukPage() {
       const q = search.toLowerCase();
       const matchSearch = p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.barcode?.includes(q);
       const matchCat    = catFilter === "all" || p.category === catFilter;
-      const matchSupplier = supplierFilter === "all" || p.supplierId === supplierFilter;
+      const matchSupplier = !canUseSupplierFeature || supplierFilter === "all" || p.supplierId === supplierFilter;
       const sold7       = soldMap[p.id] ?? 0;
       const matchStock  =
         stockFilter === "all"       ? true :
@@ -465,11 +487,11 @@ export default function ProdukPage() {
   function openEdit(product: Product) {
     setEditTarget(product);
     setForm({
-      name: product.name, barcode: product.barcode ?? "", sku: product.sku ?? "",
+      name: product.name, barcode: canUseBarcodeScanner ? product.barcode ?? "" : "", sku: product.sku ?? "",
       price: product.price.toString(), costPrice: product.costPrice?.toString() ?? "",
       stock: product.stock.toString(), minStock: product.minStock.toString(),
       unit: product.unit, category: product.category ?? "",
-      imageUrl: product.imageUrl ?? "", label: product.label ?? "", supplierId: product.supplierId ?? "",
+      imageUrl: product.imageUrl ?? "", label: product.label ?? "", supplierId: canUseSupplierFeature ? product.supplierId ?? "" : "",
     });
     if (product.category && !customCategories.includes(product.category))
       setCustomCategories(prev => [...prev, product.category!]);
@@ -499,6 +521,7 @@ export default function ProdukPage() {
   }
 
   async function handleSaveSupplier() {
+    if (!canUseSupplierFeature) return;
     if (!storeId || !supplierForm.name.trim()) return;
     setLoading(true);
     try {
@@ -675,12 +698,12 @@ export default function ProdukPage() {
     if (!form.name.trim() || !form.price || !form.stock) return;
     setLoading(true);
     const payload = {
-      name: form.name.trim(), barcode: form.barcode.trim() || null,
+      name: form.name.trim(), barcode: canUseBarcodeScanner ? form.barcode.trim() || null : null,
       sku: form.sku.trim() || null, price: parseInt(form.price),
       costPrice: form.costPrice ? parseInt(form.costPrice) : null,
       stock: parseInt(form.stock), minStock: parseInt(form.minStock) || 5,
       unit: form.unit || "pcs", category: form.category.trim() || null,
-      imageUrl: form.imageUrl || null, label: form.label || null, supplierId: form.supplierId || null, storeId,
+      imageUrl: form.imageUrl || null, label: form.label || null, supplierId: canUseSupplierFeature ? form.supplierId || null : null, storeId,
     };
     try {
       if (editTarget) {
@@ -749,25 +772,29 @@ export default function ProdukPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSupplierModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-700 transition-colors"
-          >
-            + Supplier
-          </button>
-          <button
-            onClick={scanMode ? stopScan : startScan}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-              scanMode ? "bg-red-50 border-red-200 text-red-600" : "border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-700"
-            }`}
-          >
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
-              <rect x="2" y="5" width="12" height="7" rx="1" stroke="currentColor"/>
-              <path d="M6 5V3.5a2 2 0 014 0V5" stroke="currentColor" strokeLinecap="round"/>
-              <path d="M5 9h6" stroke="currentColor" strokeLinecap="round"/>
-            </svg>
-            {scanMode ? "Stop Scan" : "Scan Barcode"}
-          </button>
+          {canUseSupplierFeature && (
+            <button
+              onClick={() => setShowSupplierModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-700 transition-colors"
+            >
+              + Supplier
+            </button>
+          )}
+          {canUseBarcodeScanner && (
+            <button
+              onClick={scanMode ? stopScan : startScan}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                scanMode ? "bg-red-50 border-red-200 text-red-600" : "border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-700"
+              }`}
+            >
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" strokeWidth={1.5}>
+                <rect x="2" y="5" width="12" height="7" rx="1" stroke="currentColor"/>
+                <path d="M6 5V3.5a2 2 0 014 0V5" stroke="currentColor" strokeLinecap="round"/>
+                <path d="M5 9h6" stroke="currentColor" strokeLinecap="round"/>
+              </svg>
+              {scanMode ? "Stop Scan" : "Scan Barcode"}
+            </button>
+          )}
           <button
             onClick={openAdd}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-700 text-white text-xs font-medium rounded-lg hover:bg-amber-800 transition-colors"
@@ -805,7 +832,7 @@ export default function ProdukPage() {
       )}
 
       {/* ── SCAN VIEW ── */}
-      {scanMode && (
+      {canUseBarcodeScanner && scanMode && (
         <div className="bg-black flex items-center justify-center py-3 flex-shrink-0">
           <div className="flex flex-col items-center gap-2">
             {devices.length > 1 && (
@@ -839,7 +866,7 @@ export default function ProdukPage() {
             <circle cx="7" cy="7" r="4.5" stroke="currentColor"/><path d="M10.5 10.5L14 14" stroke="currentColor" strokeLinecap="round"/>
           </svg>
           <input
-            type="text" placeholder="Cari nama, SKU, barcode..."
+            type="text" placeholder={canUseBarcodeScanner ? "Cari nama, SKU, barcode..." : "Cari nama atau SKU..."}
             value={search} onChange={e => setSearch(e.target.value)}
             className="pl-8 pr-3 py-1.5 text-sm text-black bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-amber-300 w-52 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow"
           />
@@ -852,12 +879,14 @@ export default function ProdukPage() {
           {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
-        <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)}
-          className="px-3 py-1.5 text-xs text-black border border-gray-200 rounded-lg outline-none focus:border-amber-300 bg-white"
-        >
-          <option value="all">Semua Supplier</option>
-          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+        {canUseSupplierFeature && (
+          <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)}
+            className="px-3 py-1.5 text-xs text-black border border-gray-200 rounded-lg outline-none focus:border-amber-300 bg-white"
+          >
+            <option value="all">Semua Supplier</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        )}
 
         {/* Stock filter — termasuk deadstock */}
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5 shadow-[0_0_10px_rgba(0,0,0,0.20)] hover:shadow-[0_0_15px_rgba(0,0,0,0.25)] transition-shadow">
@@ -1149,14 +1178,16 @@ export default function ProdukPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Barcode</label>
-                      <input type="text" placeholder="8999999012345" value={form.barcode}
-                        onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400"
-                      />
-                    </div>
+                  <div className={`grid gap-3 ${canUseBarcodeScanner ? "grid-cols-2" : "grid-cols-1"}`}>
+                    {canUseBarcodeScanner && (
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Barcode</label>
+                        <input type="text" placeholder="8999999012345" value={form.barcode}
+                          onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))}
+                          className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400"
+                        />
+                      </div>
+                    )}
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">SKU</label>
                       <input type="text" placeholder="MNM-001" value={form.sku}
@@ -1231,25 +1262,27 @@ export default function ProdukPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Supplier</label>
-                      <div className="flex gap-1">
-                        <select value={form.supplierId} onChange={e => setForm(f => ({ ...f, supplierId: e.target.value }))}
-                          className="flex-1 px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 bg-white"
-                        >
-                          <option value="">Tanpa supplier</option>
-                          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
-                        <button type="button" onClick={() => setShowSupplierModal(true)}
-                          className="px-2 text-xs text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-50"
-                        >+</button>
+                  {canUseSupplierFeature && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Supplier</label>
+                        <div className="flex gap-1">
+                          <select value={form.supplierId} onChange={e => setForm(f => ({ ...f, supplierId: e.target.value }))}
+                            className="flex-1 px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 bg-white"
+                          >
+                            <option value="">Tanpa supplier</option>
+                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                          <button type="button" onClick={() => setShowSupplierModal(true)}
+                            className="px-2 text-xs text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-50"
+                          >+</button>
+                        </div>
+                      </div>
+                      <div className="text-[10px] text-gray-400 flex items-end">
+                        Supplier akan membantu restock dan riwayat stok masuk.
                       </div>
                     </div>
-                    <div className="text-[10px] text-gray-400 flex items-end">
-                      Supplier akan membantu restock dan riwayat stok masuk.
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1268,7 +1301,7 @@ export default function ProdukPage() {
       )}
 
       {/* ── MODAL HAPUS ── */}
-      {showSupplierModal && (
+      {canUseSupplierFeature && showSupplierModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowSupplierModal(false)}>
           <div className="bg-white rounded-2xl p-6 w-[420px]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
@@ -1414,12 +1447,14 @@ export default function ProdukPage() {
                 <input value={movementForm.reason} onChange={e => setMovementForm(prev => ({ ...prev, reason: e.target.value }))}
                   className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400" placeholder="Alasan"
                 />
-                <select value={movementForm.supplierId} onChange={e => setMovementForm(prev => ({ ...prev, supplierId: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 bg-white"
-                >
-                  <option value="">Tanpa supplier</option>
-                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                {canUseSupplierFeature && (
+                  <select value={movementForm.supplierId} onChange={e => setMovementForm(prev => ({ ...prev, supplierId: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 bg-white"
+                  >
+                    <option value="">Tanpa supplier</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                )}
                 <textarea value={movementForm.note} onChange={e => setMovementForm(prev => ({ ...prev, note: e.target.value }))}
                   rows={3} className="w-full px-3 py-2 text-sm text-black border border-gray-200 rounded-lg outline-none focus:border-amber-400 resize-none" placeholder="Catatan"
                 />
